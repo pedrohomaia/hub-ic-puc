@@ -1,0 +1,118 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum MemberRole {
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String?  @unique
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships GroupMember[]
+  accounts    Account[]
+  sessions    Session[]
+}
+
+model Course {
+  id    String @id @default(cuid())
+  name  String @unique
+  areas Area[]
+}
+
+model Area {
+  id       String @id @default(cuid())
+  name     String
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id])
+
+  groups ResearchGroup[]
+  @@unique([courseId, name])
+}
+
+model ResearchGroup {
+  id     String @id @default(cuid())
+  name   String
+  areaId String
+  area   Area   @relation(fields: [areaId], references: [id])
+
+  members  GroupMember[]
+  research Research[]
+}
+
+model GroupMember {
+  id      String     @id @default(cuid())
+  userId  String
+  groupId String
+  role    MemberRole @default(MEMBER)
+
+  user  User          @relation(fields: [userId], references: [id])
+  group ResearchGroup @relation(fields: [groupId], references: [id])
+
+  @@unique([userId, groupId])
+}
+
+model Research {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  isHidden    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  groupId String
+  group   ResearchGroup @relation(fields: [groupId], references: [id])
+}
+
+/* Auth.js / NextAuth tables */
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
