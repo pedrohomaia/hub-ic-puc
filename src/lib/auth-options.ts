@@ -1,9 +1,15 @@
 import type { NextAuthOptions } from "next-auth";
+import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 
 type Credentials = {
-  email?: string;
-  password?: string;
+  email: string;
+  password: string;
+};
+
+type AppToken = JWT & {
+  uid?: string;
+  role?: string;
 };
 
 export const authOptions: NextAuthOptions = {
@@ -23,46 +29,50 @@ export const authOptions: NextAuthOptions = {
       },
 
       async authorize(credentials) {
-  const email = (credentials as any)?.email;
-  const password = (credentials as any)?.password;
+        const c = credentials as Credentials | null;
 
-  console.log("[AUTH] got email:", JSON.stringify(email));
-  console.log("[AUTH] got hasPassword:", !!password);
-  console.log("[AUTH] env email:", JSON.stringify(process.env.DEV_AUTH_EMAIL));
-  console.log("[AUTH] env hasPassword:", !!process.env.DEV_AUTH_PASSWORD);
+        const email = c?.email?.trim();
+        const password = c?.password?.trim();
 
-  const ok =
-    (email ?? "").trim() === (process.env.DEV_AUTH_EMAIL ?? "").trim() &&
-    (password ?? "").trim() === (process.env.DEV_AUTH_PASSWORD ?? "").trim();
+        if (!email || !password) return null;
 
-  console.log("[AUTH] ok:", ok);
+        const envEmail = (process.env.DEV_AUTH_EMAIL ?? "").trim();
+        const envPassword = (process.env.DEV_AUTH_PASSWORD ?? "").trim();
 
-  if (!ok) return null;
+        const ok = email === envEmail && password === envPassword;
+        if (!ok) return null;
 
-  return {
-    id: "dev-user-1",
-    name: process.env.DEV_AUTH_NAME ?? "Admin Local",
-    email: (email ?? "").trim(),
-  };
-}
-
+        return {
+          id: "dev-user-1",
+          name: process.env.DEV_AUTH_NAME ?? "Admin Local",
+          email,
+        };
+      },
     }),
   ],
 
   callbacks: {
     async jwt({ token, user }) {
+      const t = token as AppToken;
+
       if (user) {
-        (token as any).uid = (user as any).id;
-        (token as any).role = process.env.DEV_AUTH_ROLE ?? "ADMIN";
+        // NextAuth User sempre tem id (string) quando vem do authorize()
+        t.uid = user.id;
+        t.role = process.env.DEV_AUTH_ROLE ?? "ADMIN";
       }
-      return token;
+
+      return t;
     },
 
     async session({ session, token }) {
+      const t = token as AppToken;
+
       if (session.user) {
-        (session.user as any).id = (token as any).uid ?? null;
-        (session.user as any).role = (token as any).role ?? null;
+        // sem any: adiciona campos via Record
+        (session.user as Record<string, unknown>).id = t.uid ?? null;
+        (session.user as Record<string, unknown>).role = t.role ?? null;
       }
+
       return session;
     },
   },
