@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
+import { prisma } from "@/lib/db"; // ✅
 
 type Credentials = {
   email: string;
@@ -16,9 +17,7 @@ export const authOptions: NextAuthOptions = {
   debug: process.env.NEXTAUTH_DEBUG === "true",
   session: { strategy: "jwt" },
 
-  pages: {
-    signIn: "/auth/signin",
-  },
+  pages: { signIn: "/auth/signin" },
 
   providers: [
     CredentialsProvider({
@@ -42,10 +41,21 @@ export const authOptions: NextAuthOptions = {
         const ok = email === envEmail && password === envPassword;
         if (!ok) return null;
 
+        // ✅ garante que existe um User no banco e pega o ID REAL (cuid)
+        const dbUser = await prisma.user.upsert({
+          where: { email },
+          update: { name: process.env.DEV_AUTH_NAME ?? "Admin Local" },
+          create: {
+            email,
+            name: process.env.DEV_AUTH_NAME ?? "Admin Local",
+          },
+          select: { id: true, email: true, name: true },
+        });
+
         return {
-          id: "dev-user-1",
-          name: process.env.DEV_AUTH_NAME ?? "Admin Local",
-          email,
+          id: dbUser.id,          // ✅ agora é cuid() do Prisma
+          name: dbUser.name,
+          email: dbUser.email,
         };
       },
     }),
@@ -54,25 +64,19 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       const t = token as AppToken;
-
       if (user) {
-        // NextAuth User sempre tem id (string) quando vem do authorize()
-        t.uid = user.id;
+        t.uid = user.id; // agora é cuid
         t.role = process.env.DEV_AUTH_ROLE ?? "ADMIN";
       }
-
       return t;
     },
 
     async session({ session, token }) {
       const t = token as AppToken;
-
       if (session.user) {
-        // sem any: adiciona campos via Record
         (session.user as Record<string, unknown>).id = t.uid ?? null;
         (session.user as Record<string, unknown>).role = t.role ?? null;
       }
-
       return session;
     },
   },
