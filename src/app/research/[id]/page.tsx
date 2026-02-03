@@ -7,6 +7,7 @@ import { getResearchById } from "@/lib/research.repo";
 import { getSessionUser } from "@/lib/auth";
 import { getUserGroupRole } from "@/lib/rbac";
 import AdminControls from "./AdminControls";
+import CompleteButton from "./CompleteButton";
 
 
 type Props = { params: Promise<{ id: string }> };
@@ -59,6 +60,7 @@ export default async function ResearchDetailPage({ params }: Props) {
         }}
       >
         Views: — • Completions: — <span style={{ opacity: 0.7 }}>(Em breve)</span>
+        <CompleteButton researchId={research.id} />
       </div>
 
       <AdminControls

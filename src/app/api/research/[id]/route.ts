@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAuth, getSessionUser } from "@/lib/auth";
 import { requireGroupAdmin, requireModerator } from "@/lib/rbac";
+import { Result } from "pg";
 
 type PatchBody = {
   title?: string;
@@ -102,6 +103,6 @@ export async function DELETE(
     where: { id },
     data: { isHidden: true },
   });
-
+ 
   return NextResponse.json({ ok: true, research: updated });
 }

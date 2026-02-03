@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,26 +6,22 @@ datasource db {
   provider = "postgresql"
 }
 
-
-
-
-enum MemberRole {
-  ADMIN
-  MEMBER
-}
-
 model User {
-  id        String   @id @default(cuid())
-  name      String?
-  email     String  @unique
-  image     String?
-  courseId  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  memberships GroupMember[]
-  accounts    Account[]
-  sessions    Session[]
+  id                       String                @id @default(cuid())
+  name                     String?
+  email                    String                @unique
+  image                    String?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  courseId                 String?
+  /// ✅ Sprint 2
+  points                   Int                   @default(0)
+  accounts                 Account[]
+  completions              Completion[]
+  memberships              GroupMember[]
+  sessions                 Session[]
+  badges                   UserBadge[]
+  usedResearchVerifyTokens ResearchVerifyToken[] @relation("ResearchVerifyTokensUsedBy")
 }
 
 model Course {
@@ -41,50 +31,92 @@ model Course {
 }
 
 model Area {
-  id       String @id @default(cuid())
+  id       String          @id @default(cuid())
   name     String
   courseId String
-  course   Course @relation(fields: [courseId], references: [id])
+  course   Course          @relation(fields: [courseId], references: [id])
+  groups   ResearchGroup[]
 
-  groups ResearchGroup[]
   @@unique([courseId, name])
 }
 
 model ResearchGroup {
-  id     String @id @default(cuid())
-  name   String
-  areaId String
-  area   Area   @relation(fields: [areaId], references: [id])
-
+  id       String        @id @default(cuid())
+  name     String
+  areaId   String
   members  GroupMember[]
   research Research[]
+  area     Area          @relation(fields: [areaId], references: [id])
 }
 
 model GroupMember {
-  id      String     @id @default(cuid())
+  id      String        @id @default(cuid())
   userId  String
   groupId String
-  role    MemberRole @default(MEMBER)
-
-  user  User          @relation(fields: [userId], references: [id])
-  group ResearchGroup @relation(fields: [groupId], references: [id])
+  role    MemberRole    @default(MEMBER)
+  group   ResearchGroup @relation(fields: [groupId], references: [id])
+  user    User          @relation(fields: [userId], references: [id])
 
   @@unique([userId, groupId])
 }
 
 model Research {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  isHidden    Boolean  @default(false)
-  isApproved  Boolean  @default(false) // ✅ ADD
-  createdAt   DateTime @default(now())
-
-  groupId String
-  group   ResearchGroup @relation(fields: [groupId], references: [id])
+  id           String                @id @default(cuid())
+  title        String
+  description  String?
+  isHidden     Boolean               @default(false)
+  createdAt    DateTime              @default(now())
+  groupId      String
+  isApproved   Boolean               @default(false)
+  completions  Completion[]
+  group        ResearchGroup         @relation(fields: [groupId], references: [id])
+  verifyTokens ResearchVerifyToken[] @relation("ResearchVerifyTokens")
 }
 
-/* Auth.js / NextAuth tables */
+model Completion {
+  id            String         @id @default(cuid())
+  userId        String
+  researchId    String
+  type          CompletionType @default(SIMPLE)
+  pointsAwarded Int
+  createdAt     DateTime       @default(now())
+  research      Research       @relation(fields: [researchId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+
+  @@unique([userId, researchId, type])
+  @@index([createdAt])
+  @@index([researchId, createdAt])
+}
+
+model UserBadge {
+  id        String    @id @default(cuid())
+  userId    String
+  code      BadgeCode
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, code])
+  @@index([createdAt])
+}
+
+model ResearchVerifyToken {
+  id         String   @id @default(cuid())
+  researchId String
+  tokenHash  String   @unique
+  createdAt  DateTime @default(now())
+
+  usedAt       DateTime?
+  usedByUserId String?
+  expiresAt    DateTime?
+
+  research   Research @relation("ResearchVerifyTokens", fields: [researchId], references: [id], onDelete: Cascade)
+  usedByUser User?    @relation("ResearchVerifyTokensUsedBy", fields: [usedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([researchId, createdAt])
+  @@index([researchId, usedAt])
+}
+
+/// Auth.js / NextAuth tables
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -98,8 +130,7 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -109,8 +140,7 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VerificationToken {
@@ -119,4 +149,21 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+enum MemberRole {
+  ADMIN
+  MEMBER
+}
+
+enum CompletionType {
+  SIMPLE
+  VERIFIED
+}
+
+enum BadgeCode {
+  BRONZE_1
+  BRONZE_2
+  BRONZE_3
+  VERIFIED_1
 }

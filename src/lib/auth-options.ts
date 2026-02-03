@@ -1,7 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { prisma } from "@/lib/db"; // ✅
+import { prisma } from "@/lib/db";
 
 type Credentials = {
   email: string;
@@ -14,6 +14,7 @@ type AppToken = JWT & {
 };
 
 export const authOptions: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET, // ✅ importante no App Router
   debug: process.env.NEXTAUTH_DEBUG === "true",
   session: { strategy: "jwt" },
 
@@ -41,7 +42,7 @@ export const authOptions: NextAuthOptions = {
         const ok = email === envEmail && password === envPassword;
         if (!ok) return null;
 
-        // ✅ garante que existe um User no banco e pega o ID REAL (cuid)
+        // ✅ garante User no banco e pega o ID REAL (cuid)
         const dbUser = await prisma.user.upsert({
           where: { email },
           update: { name: process.env.DEV_AUTH_NAME ?? "Admin Local" },
@@ -53,7 +54,7 @@ export const authOptions: NextAuthOptions = {
         });
 
         return {
-          id: dbUser.id,          // ✅ agora é cuid() do Prisma
+          id: dbUser.id,
           name: dbUser.name,
           email: dbUser.email,
         };
@@ -65,7 +66,7 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       const t = token as AppToken;
       if (user) {
-        t.uid = user.id; // agora é cuid
+        t.uid = user.id;
         t.role = process.env.DEV_AUTH_ROLE ?? "ADMIN";
       }
       return t;
