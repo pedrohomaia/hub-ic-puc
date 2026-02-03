@@ -9,7 +9,7 @@ export default function ModerationControls({ id }: { id: string }) {
   const [loading, setLoading] = useState<"approve" | "hide" | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  async function patch(body: any) {
+  async function patch(body: unknown) {
     setErr(null);
     const res = await fetch(`/api/research/${id}`, {
       method: "PATCH",
@@ -17,9 +17,14 @@ export default function ModerationControls({ id }: { id: string }) {
       body: JSON.stringify(body),
     });
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data?.ok === false) {
-      throw new Error(data?.error || "REQUEST_FAILED");
+    const data = await res.json().catch(() => ({} as unknown));
+    const obj = (typeof data === "object" && data !== null ? data : {}) as {
+      ok?: boolean;
+      error?: string;
+    };
+
+    if (!res.ok || obj.ok === false) {
+      throw new Error(obj.error || "REQUEST_FAILED");
     }
   }
 
@@ -28,8 +33,8 @@ export default function ModerationControls({ id }: { id: string }) {
       setLoading("approve");
       await patch({ approved: true });
       router.refresh(); // remove da lista (não é mais pendente)
-    } catch (e: any) {
-      setErr(String(e?.message ?? "ERROR"));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "ERROR");
     } finally {
       setLoading(null);
     }
@@ -40,8 +45,8 @@ export default function ModerationControls({ id }: { id: string }) {
       setLoading("hide");
       await patch({ hidden: true });
       router.refresh(); // remove da lista (isHidden=true)
-    } catch (e: any) {
-      setErr(String(e?.message ?? "ERROR"));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "ERROR");
     } finally {
       setLoading(null);
     }

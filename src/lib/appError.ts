@@ -16,8 +16,9 @@ export function asErrorCode(e: unknown): { code: string; status?: number; detail
   if (e instanceof AppError) return { code: e.code, status: e.status, details: e.details };
 
   // fallback: padrão antigo (throw new Error("TOKEN_USED"))
-  if (e && typeof e === "object" && "message" in e && typeof (e as any).message === "string") {
-    return { code: (e as any).message };
+  if (e && typeof e === "object" && "message" in e) {
+    const msg = (e as { message?: unknown }).message;
+    if (typeof msg === "string") return { code: msg };
   }
 
   return { code: "INTERNAL_ERROR" };

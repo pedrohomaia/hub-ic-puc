@@ -34,9 +34,10 @@ export default function TokensClient({ researchId }: { researchId: string }) {
       }
 
       setTokens(Array.isArray(data?.tokens) ? data.tokens : []);
-    } catch (e: any) {
-      setErr(String(e?.message ?? e));
-    } finally {
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+}
+      finally {
       setLoading(false);
     }
   }

@@ -6,8 +6,21 @@ export const revalidate = 0;
 
 type Period = "month" | "week" | "30d";
 
-async function getLeaderboard(period: Period) {
-  // ✅ Next 15+: headers() é async
+type LeaderboardItem = {
+  rank: number;
+  userId: string;
+  name?: string | null;
+  email?: string | null;
+  points: number;
+  completions: number;
+};
+
+type LeaderboardResponse =
+  | { ok: true; items: LeaderboardItem[] }
+  | { ok: false; error?: string };
+
+async function getLeaderboard(period: Period): Promise<LeaderboardResponse> {
+  // ✅ Next 16+: headers() é async
   const h = await headers();
 
   const host = h.get("host");
@@ -21,15 +34,17 @@ async function getLeaderboard(period: Period) {
     cache: "no-store",
   });
 
-  return res.json();
+  return (await res.json()) as LeaderboardResponse;
 }
 
-export default async function LeaderboardPage({
-  searchParams,
-}: {
-  searchParams: { period?: string };
-}) {
-  const raw = (searchParams.period ?? "month").toLowerCase();
+type Props = {
+  searchParams: Promise<{ period?: string }>;
+};
+
+export default async function LeaderboardPage({ searchParams }: Props) {
+  const sp = await searchParams;
+
+  const raw = (sp.period ?? "month").toLowerCase();
   const period: Period = raw === "week" ? "week" : raw === "30d" ? "30d" : "month";
 
   const data = await getLeaderboard(period);
@@ -48,13 +63,13 @@ export default async function LeaderboardPage({
         <a href="/leaderboard?period=30d">30 dias</a>
       </div>
 
-      {!data?.ok ? (
-        <p style={{ color: "crimson" }}>Erro: {data?.error ?? "UNKNOWN"}</p>
+      {!data.ok ? (
+        <p style={{ color: "crimson" }}>Erro: {data.error ?? "UNKNOWN"}</p>
       ) : data.items.length === 0 ? (
         <p style={{ opacity: 0.8 }}>Ainda sem pontuações neste período.</p>
       ) : (
         <ol style={{ paddingLeft: 18 }}>
-          {data.items.map((it: any) => (
+          {data.items.map((it) => (
             <li key={it.userId} style={{ marginBottom: 10 }}>
               <div>
                 <strong>

@@ -5,6 +5,11 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { generateVerifyTokensForResearch } from "@/lib/researchTokens.repo";
 
+type TokensBody = {
+  count?: unknown;
+  expiresInDays?: unknown;
+};
+
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const { id: researchId } = await ctx.params;
@@ -15,10 +20,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     const user = await requireAuth();
 
-    const body = await req.json().catch(() => ({} as any));
-    const count = Number(body?.count ?? 0);
+    const body: unknown = await req.json().catch(() => ({} as unknown));
+    const obj = (typeof body === "object" && body !== null ? body : {}) as TokensBody;
 
-    const expiresInDaysRaw = body?.expiresInDays;
+    const count = Number(obj.count ?? 0);
+
+    const expiresInDaysRaw = obj.expiresInDays;
     const expiresInDays =
       expiresInDaysRaw == null ? undefined : Number(expiresInDaysRaw);
 
@@ -53,8 +60,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       },
       { status: 200 }
     );
-  } catch (err: any) {
-    const msg = String(err?.message ?? "");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err ?? "");
 
     if (msg === "UNAUTHENTICATED") {
       return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });

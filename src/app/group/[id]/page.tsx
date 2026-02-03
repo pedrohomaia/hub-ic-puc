@@ -26,7 +26,8 @@ export default async function GroupPage({ params }: Props) {
   try {
     const user = await getSessionUser();
     if (user?.id) {
-      role = (await getUserGroupRole(user.id, groupId)) as any;
+      const r = await getUserGroupRole(user.id, groupId);
+      role = r === "ADMIN" || r === "MEMBER" ? r : null;
     }
   } catch {
     role = null;

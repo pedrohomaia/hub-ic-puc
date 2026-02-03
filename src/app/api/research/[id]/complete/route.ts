@@ -15,8 +15,10 @@ export async function POST(
     const result = await createCompletionSimple(user.id, researchId);
 
     return NextResponse.json(result);
-  } catch (err: any) {
-    const code = String(err?.message ?? "UNKNOWN");
+  } catch (err) {
+    const code =
+      err instanceof Error ? err.message : (typeof err === "string" ? err : "UNKNOWN");
+
 
     if (code === "UNAUTHENTICATED")
       return NextResponse.json({ ok: false, error: "UNAUTHENTICATED" }, { status: 401 });

@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAuth, getSessionUser } from "@/lib/auth";
 import { requireGroupAdmin, requireModerator } from "@/lib/rbac";
-import { Result } from "pg";
+
 
 type PatchBody = {
   title?: string;
@@ -67,8 +67,10 @@ export async function PATCH(
     });
 
     return NextResponse.json({ ok: true, research: updated });
-  } catch (err: any) {
-    const code = String(err?.message ?? "UNKNOWN");
+  } catch (err) {
+    const code =
+      err instanceof Error ? err.message : (typeof err === "string" ? err : "UNKNOWN");
+
 
     if (code === "UNAUTHORIZED") return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     if (code === "FORBIDDEN_GROUP_ADMIN") return NextResponse.json({ error: "FORBIDDEN_GROUP_ADMIN" }, { status: 403 });

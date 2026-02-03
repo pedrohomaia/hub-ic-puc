@@ -39,7 +39,7 @@ export async function createCompletionSimple(userId: string, researchId: string)
         data: { points: { increment: SIMPLE_POINTS } },
       }),
     ]);
-  } catch (e: any) {
+  } catch (e) {
     // ✅ agora o unique é @@unique([userId, researchId, type])
     // então isso significa: "já existe SIMPLE pra esse user+research"
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
