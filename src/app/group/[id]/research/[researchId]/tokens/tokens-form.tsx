@@ -19,6 +19,10 @@ type ApiErr = {
   hint?: string;
 };
 
+function asObj(v: unknown): Record<string, unknown> {
+  return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
+}
+
 export default function TokensForm({ researchId }: Props) {
   const [count, setCount] = useState(10);
   const [expiresInDays, setExpiresInDays] = useState<number | "">(30);
@@ -37,8 +41,7 @@ export default function TokensForm({ researchId }: Props) {
     setExpiresAt(null);
 
     try {
-      const payload: any = { count };
-
+      const payload: { count: number; expiresInDays?: number } = { count };
       if (expiresInDays !== "") payload.expiresInDays = expiresInDays;
 
       const res = await fetch(`/api/research/${researchId}/tokens`, {
@@ -47,18 +50,19 @@ export default function TokensForm({ researchId }: Props) {
         body: JSON.stringify(payload),
       });
 
-      const data = (await res.json().catch(() => ({}))) as Partial<ApiOk & ApiErr>;
+      const raw: unknown = await res.json().catch(() => ({}));
+      const data = asObj(raw) as Partial<ApiOk & ApiErr>;
 
       if (!res.ok) {
-        const code = data.error ?? "REQUEST_FAILED";
-        const hint = data.hint ? ` (${data.hint})` : "";
+        const code = typeof data.error === "string" ? data.error : "REQUEST_FAILED";
+        const hint = typeof data.hint === "string" ? ` (${data.hint})` : "";
         setError(`${code}${hint}`);
         return;
       }
 
-      setTokens(Array.isArray(data.tokens) ? data.tokens : []);
+      setTokens(Array.isArray(data.tokens) ? (data.tokens as string[]) : []);
       setExpiresAt(typeof data.expiresAt === "string" ? data.expiresAt : null);
-    } catch (e) {
+    } catch {
       setError("NETWORK_ERROR");
     } finally {
       setLoading(false);
@@ -115,6 +119,7 @@ export default function TokensForm({ researchId }: Props) {
           </label>
 
           <button
+            type="button"
             onClick={onGenerate}
             disabled={loading}
             style={{
@@ -144,13 +149,16 @@ export default function TokensForm({ researchId }: Props) {
             <div style={{ fontSize: 13, opacity: 0.8 }}>
               <strong>Tokens gerados:</strong> {tokens.length}
               {expiresAt ? (
-                <span style={{ marginLeft: 10, opacity: 0.75 }}>Expira em: {new Date(expiresAt).toLocaleString()}</span>
+                <span style={{ marginLeft: 10, opacity: 0.75 }}>
+                  Expira em: {new Date(expiresAt).toLocaleString()}
+                </span>
               ) : (
                 <span style={{ marginLeft: 10, opacity: 0.75 }}>Sem expiração</span>
               )}
             </div>
 
             <button
+              type="button"
               onClick={onCopy}
               style={{
                 height: 36,

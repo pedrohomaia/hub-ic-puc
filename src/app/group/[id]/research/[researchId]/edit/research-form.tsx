@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 
+function asObj(v: unknown): Record<string, unknown> {
+  return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
+}
+
 type Props = {
   groupId: string;
   researchId: string;
@@ -32,9 +36,12 @@ export default function EditResearchForm({
         body: JSON.stringify({ title, description: description || null }),
       });
 
-      const data = await res.json().catch(() => ({} as any));
+      const raw: unknown = await res.json().catch(() => ({}));
+      const data = asObj(raw);
+
       if (!res.ok) {
-        setErr(data?.error ?? "REQUEST_FAILED");
+        const code = typeof data.error === "string" ? data.error : "REQUEST_FAILED";
+        setErr(code);
         return;
       }
 
