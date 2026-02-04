@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 
-export default function VerifyForm({ researchId }: { researchId: string }) {
+type Props = { researchId: string };
+
+function asObj(v: unknown): Record<string, unknown> {
+  return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
+}
+
+export default function VerifyForm({ researchId }: Props) {
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -21,14 +27,16 @@ export default function VerifyForm({ researchId }: { researchId: string }) {
         body: JSON.stringify({ token }),
       });
 
-      const data = await res.json().catch(() => ({} as any));
+      const raw: unknown = await res.json().catch(() => ({}));
+      const data = asObj(raw);
+      const apiError = typeof data.error === "string" ? data.error : null;
 
       if (!res.ok) {
-        setErr(data?.error ?? "REQUEST_FAILED");
+        setErr(apiError ?? "REQUEST_FAILED");
         return;
       }
 
-      setMsg("Verificação OK! Pontos creditados.");
+      setMsg("Verificação OK!");
       setToken("");
     } catch {
       setErr("NETWORK_ERROR");

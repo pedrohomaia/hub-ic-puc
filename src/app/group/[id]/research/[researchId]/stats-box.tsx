@@ -13,6 +13,10 @@ type StatsOk = {
   tokensTotalCount: number;
 };
 
+function asObj(v: unknown): Record<string, unknown> {
+  return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
+}
+
 export default function StatsBox({ researchId }: Props) {
   const [data, setData] = useState<StatsOk | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -22,15 +26,37 @@ export default function StatsBox({ researchId }: Props) {
 
     fetch(`/api/research/${researchId}/stats`)
       .then(async (r) => {
-        const json = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error((json as any)?.error ?? "REQUEST_FAILED");
-        return json as StatsOk;
+        const raw: unknown = await r.json().catch(() => ({}));
+        const obj = asObj(raw);
+        const apiError = typeof obj.error === "string" ? obj.error : null;
+
+        if (!r.ok) throw new Error(apiError ?? "REQUEST_FAILED");
+
+        // validação mínima do payload
+        const ok = obj.ok === true;
+        const completionsCount = typeof obj.completionsCount === "number" ? obj.completionsCount : 0;
+        const verifiedCount = typeof obj.verifiedCount === "number" ? obj.verifiedCount : 0;
+        const tokensUsedCount = typeof obj.tokensUsedCount === "number" ? obj.tokensUsedCount : 0;
+        const tokensTotalCount = typeof obj.tokensTotalCount === "number" ? obj.tokensTotalCount : 0;
+
+        if (!ok) throw new Error("INVALID_RESPONSE");
+
+        const parsed: StatsOk = {
+          ok: true,
+          researchId,
+          completionsCount,
+          verifiedCount,
+          tokensUsedCount,
+          tokensTotalCount,
+        };
+        return parsed;
       })
       .then((json) => {
         if (alive) setData(json);
       })
-      .catch((e: any) => {
-        if (alive) setErr(String(e?.message ?? "REQUEST_FAILED"));
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (alive) setErr(msg);
       });
 
     return () => {
