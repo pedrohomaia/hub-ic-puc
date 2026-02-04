@@ -1,6 +1,7 @@
 // src/lib/completions.repo.ts
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { AppError } from "@/lib/appError";
 
 const SIMPLE_POINTS = 10;
 
@@ -20,8 +21,8 @@ export async function createCompletionSimple(userId: string, researchId: string)
     select: { id: true, isApproved: true, isHidden: true },
   });
 
-  if (!research) throw new Error("NOT_FOUND");
-  if (!research.isApproved || research.isHidden) throw new Error("RESEARCH_NOT_VISIBLE");
+  if (!research) throw new AppError("NOT_FOUND", 404);
+  if (!research.isApproved || research.isHidden) throw new AppError("RESEARCH_NOT_VISIBLE", 403);
 
   try {
     // ✅ cria SIMPLE + soma pontos atomicamente
@@ -40,10 +41,9 @@ export async function createCompletionSimple(userId: string, researchId: string)
       }),
     ]);
   } catch (e) {
-    // ✅ agora o unique é @@unique([userId, researchId, type])
-    // então isso significa: "já existe SIMPLE pra esse user+research"
+    // @@unique([userId, researchId, type]) => já existe SIMPLE p/ esse user+research
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      throw new Error("ALREADY_COMPLETED");
+      throw new AppError("ALREADY_COMPLETED", 409);
     }
     throw e;
   }

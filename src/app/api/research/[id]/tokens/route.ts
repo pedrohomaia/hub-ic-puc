@@ -1,5 +1,6 @@
 // src/app/api/research/[id]/tokens/route.ts
 export const runtime = "nodejs";
+import { asErrorCode } from "@/lib/appError";
 
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
@@ -61,25 +62,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       { status: 200 }
     );
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err ?? "");
+  const { code, status } = asErrorCode(err);
 
-    if (msg === "UNAUTHENTICATED") {
-      return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
-    }
-
-    if (msg === "FORBIDDEN" || msg.includes("FORBIDDEN")) {
-      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-    }
-
-    if (msg === "NOT_FOUND") {
-      return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
-    }
-
-    if (msg === "INVALID_COUNT") {
-      return NextResponse.json({ error: "INVALID_COUNT" }, { status: 400 });
-    }
-
-    console.error("[TOKENS][POST] error:", err);
-    return NextResponse.json({ error: "INTERNAL_ERROR" }, { status: 500 });
+  if (typeof status === "number") {
+    return NextResponse.json({ error: code }, { status });
   }
+
+  console.error("[TOKENS][POST] error:", err);
+  return NextResponse.json({ error: "INTERNAL_ERROR" }, { status: 500 });
+}
 }

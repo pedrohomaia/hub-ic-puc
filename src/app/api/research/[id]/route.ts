@@ -2,109 +2,41 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { requireAuth, getSessionUser } from "@/lib/auth";
-import { requireGroupAdmin, requireModerator } from "@/lib/rbac";
+import { requireAuth } from "@/lib/auth";
+import { asErrorCode, AppError } from "@/lib/appError";
+import { getUserGroupRole } from "@/lib/rbac";
+import { getResearchById, updateResearch, validateResearchUpdatePayload } from "@/lib/research.repo";
 
-
-type PatchBody = {
-  title?: string;
-  description?: string;
-
-  // ✅ US1.6
-  approved?: boolean;
-  hidden?: boolean;
-};
-
-export async function PATCH(
-  req: Request,
-  ctx: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await ctx.params;
+    const { id: researchId } = await ctx.params;
+    if (!researchId) return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
 
-    const user = await requireAuth(); // garante user.id
-    const sessionUser = await getSessionUser(); // pega email (moderação)
+    const user = await requireAuth();
 
-    const body = (await req.json().catch(() => ({}))) as PatchBody;
+    const existing = await getResearchById(researchId);
+    if (!existing) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
 
-    const existing = await prisma.research.findUnique({
-      where: { id },
-      select: { id: true, groupId: true },
-    });
+    const role = await getUserGroupRole(user.id, existing.groupId);
+    if (role !== "ADMIN") throw new AppError("FORBIDDEN", 403);
 
-    if (!existing) {
-      return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
-    }
+    const body = await req.json().catch(() => ({}));
+    const patch = validateResearchUpdatePayload(body);
 
-    // ✅ MODERAÇÃO GLOBAL: aprovar/ocultar
-    if (typeof body.approved === "boolean" || typeof body.hidden === "boolean") {
-      requireModerator(sessionUser?.email);
+    const updated = await updateResearch(user.id, researchId, patch);
 
-      const updated = await prisma.research.update({
-        where: { id },
-        data: {
-          ...(typeof body.approved === "boolean" ? { isApproved: body.approved } : {}),
-          ...(typeof body.hidden === "boolean" ? { isHidden: body.hidden } : {}),
-        },
-      });
-
-      return NextResponse.json({ ok: true, research: updated });
-    }
-
-    // ✅ EDIÇÃO NORMAL: ADMIN do grupo
-    await requireGroupAdmin(user.id, existing.groupId);
-
-    const nextTitle = body.title?.trim();
-    const nextDesc = body.description?.trim();
-
-    const updated = await prisma.research.update({
-      where: { id },
-      data: {
-        ...(nextTitle !== undefined ? { title: nextTitle } : {}),
-        ...(nextDesc !== undefined ? { description: nextDesc } : {}),
-      },
-    });
-
-    return NextResponse.json({ ok: true, research: updated });
+    return NextResponse.json({ ok: true, research: updated }, { status: 200 });
   } catch (err) {
-    const code =
-      err instanceof Error ? err.message : (typeof err === "string" ? err : "UNKNOWN");
+    const { code, status } = asErrorCode(err);
 
+    if (typeof status === "number") {
+      return NextResponse.json({ error: code }, { status });
+    }
 
-    if (code === "UNAUTHORIZED") return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    if (code === "FORBIDDEN_GROUP_ADMIN") return NextResponse.json({ error: "FORBIDDEN_GROUP_ADMIN" }, { status: 403 });
-    if (code === "FORBIDDEN_MODERATOR") return NextResponse.json({ error: "FORBIDDEN_MODERATOR" }, { status: 403 });
+    if (code === "INVALID_TITLE") return NextResponse.json({ error: code }, { status: 400 });
+    if (code === "INVALID_EMPTY_PATCH") return NextResponse.json({ error: code }, { status: 400 });
 
-    console.error("[PATCH /api/research/:id] error:", err);
+    console.error("[RESEARCH_PATCH][PATCH] error:", err);
     return NextResponse.json({ error: "INTERNAL_ERROR" }, { status: 500 });
   }
-}
-
-export async function DELETE(
-  _req: Request,
-  ctx: { params: Promise<{ id: string }> }
-) {
-  const { id } = await ctx.params;
-
-  const user = await requireAuth();
-
-  const existing = await prisma.research.findUnique({
-    where: { id },
-    select: { id: true, groupId: true },
-  });
-
-  if (!existing) {
-    return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
-  }
-
-  await requireGroupAdmin(user.id, existing.groupId);
-
-  // MVP: "delete" = ocultar
-  const updated = await prisma.research.update({
-    where: { id },
-    data: { isHidden: true },
-  });
- 
-  return NextResponse.json({ ok: true, research: updated });
 }

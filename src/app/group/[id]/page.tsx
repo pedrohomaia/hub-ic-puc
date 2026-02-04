@@ -36,7 +36,8 @@ export default async function GroupPage({ params }: Props) {
   const isAdmin = role === "ADMIN";
   const isMember = role === "MEMBER" || isAdmin;
 
-  const items = await listResearchByGroup(groupId);
+  // ✅ NÃO busca pesquisas se não for membro (evita vazamento)
+  const items = isMember ? await listResearchByGroup(groupId) : [];
 
   return (
     <main style={{ padding: 24, maxWidth: 900 }}>
@@ -88,9 +89,11 @@ export default async function GroupPage({ params }: Props) {
         </p>
       ) : null}
 
-      {items.length === 0 ? (
+      {isMember && items.length === 0 ? (
         <p style={{ opacity: 0.8 }}>Nenhuma pesquisa neste grupo ainda.</p>
-      ) : (
+      ) : null}
+
+      {isMember && items.length > 0 ? (
         <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 10 }}>
           {items.map((r) => (
             <li
@@ -113,7 +116,8 @@ export default async function GroupPage({ params }: Props) {
                 </div>
 
                 <Link
-                  href={`/research/${r.id}`}
+                  // ✅ link no contexto do grupo (Sprint 5.6)
+                  href={`/group/${groupId}/research/${r.id}`}
                   style={{
                     padding: 8,
                     border: "1px solid #ddd",
@@ -127,7 +131,7 @@ export default async function GroupPage({ params }: Props) {
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
     </main>
   );
 }
