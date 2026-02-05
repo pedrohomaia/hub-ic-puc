@@ -5,6 +5,8 @@ import { GET } from "./route";
 describe("GET /api/leaderboard", () => {
   beforeAll(async () => {
     // limpa o necessário (ordem FK)
+    await prisma.userBadge.deleteMany();
+    await prisma.researchVerifyToken.deleteMany(); // opcional, mas seguro
     await prisma.completion.deleteMany();
     await prisma.groupMember.deleteMany();
     await prisma.research.deleteMany();
@@ -26,7 +28,7 @@ describe("GET /api/leaderboard", () => {
     await prisma.completion.createMany({
       data: [
         { userId: u1.id, researchId: r.id, type: "VERIFIED", pointsAwarded: 30 },
-        { userId: u1.id, researchId: r.id, type: "SIMPLE", pointsAwarded: 5 }, // vai falhar por unique (userId,researchId,type) se repetir o mesmo tipo — então mantenha tipos diferentes
+        { userId: u1.id, researchId: r.id, type: "SIMPLE", pointsAwarded: 5 },
         { userId: u2.id, researchId: r.id, type: "VERIFIED", pointsAwarded: 10 },
       ],
     });
