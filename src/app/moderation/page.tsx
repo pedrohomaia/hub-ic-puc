@@ -6,14 +6,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getSessionUser } from "@/lib/auth";
-import { requireModerator } from "@/lib/rbac";
+import { isGlobalModerator } from "@/lib/rbac";
 import { listPendingResearch, moderateResearch } from "@/lib/research.repo";
 
 async function moderate(id: string, action: "APPROVE" | "HIDE") {
   "use server";
   await moderateResearch(id, action);
-
-  // ✅ atualiza as páginas sem depender de fetch/URL
   revalidatePath("/moderation");
   revalidatePath("/research");
 }
@@ -22,10 +20,41 @@ export default async function ModerationPage() {
   const user = await getSessionUser();
   if (!user) redirect("/auth/signin");
 
-  // ✅ só moderador
-  requireModerator(user.email);
+  // ✅ NÃO deixa “tela branca”
+  if (!isGlobalModerator(user.email)) {
+    return (
+      <main style={{ padding: 24, maxWidth: 900 }}>
+        <h1>Acesso negado</h1>
+        <p style={{ opacity: 0.8 }}>Você não é moderador global.</p>
+        <p style={{ opacity: 0.8, fontSize: 12 }}>
+          Verifique <code>MODERATOR_EMAILS</code> no <code>.env.local</code>.
+        </p>
+        <Link href="/research" style={{ textDecoration: "none" }}>
+          ← Voltar para pesquisas
+        </Link>
+      </main>
+    );
+  }
 
-  const items = await listPendingResearch(80);
+  // ✅ Captura erro de DB e mostra na tela (sem branco)
+  let items: Awaited<ReturnType<typeof listPendingResearch>> = [];
+  try {
+    items = await listPendingResearch(80);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "UNKNOWN_ERROR";
+    return (
+      <main style={{ padding: 24, maxWidth: 900 }}>
+        <h1>Moderação</h1>
+        <p style={{ opacity: 0.8 }}>Falha ao carregar pendências.</p>
+        <pre style={{ background: "#f6f6f6", padding: 12, borderRadius: 12, overflow: "auto" }}>
+          {msg}
+        </pre>
+        <Link href="/research" style={{ textDecoration: "none" }}>
+          ← Voltar para pesquisas
+        </Link>
+      </main>
+    );
+  }
 
   return (
     <main style={{ padding: 24, maxWidth: 900 }}>
@@ -56,45 +85,14 @@ export default async function ModerationPage() {
                 </div>
 
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <form
-                    action={async () => {
-                      "use server";
-                      await moderate(r.id, "APPROVE");
-                    }}
-                  >
-                    <button
-                      type="submit"
-                      style={{
-                        height: 36,
-                        padding: "0 10px",
-                        borderRadius: 10,
-                        border: "1px solid #ddd",
-                        background: "transparent",
-                        cursor: "pointer",
-                      }}
-                    >
+                  <form action={async () => { "use server"; await moderate(r.id, "APPROVE"); }}>
+                    <button type="submit" style={{ height: 36, padding: "0 10px", borderRadius: 10, border: "1px solid #ddd", background: "transparent", cursor: "pointer" }}>
                       Aprovar
                     </button>
                   </form>
 
-                  <form
-                    action={async () => {
-                      "use server";
-                      await moderate(r.id, "HIDE");
-                    }}
-                  >
-                    <button
-                      type="submit"
-                      style={{
-                        height: 36,
-                        padding: "0 10px",
-                        borderRadius: 10,
-                        border: "1px solid #ddd",
-                        background: "transparent",
-                        cursor: "pointer",
-                        opacity: 0.8,
-                      }}
-                    >
+                  <form action={async () => { "use server"; await moderate(r.id, "HIDE"); }}>
+                    <button type="submit" style={{ height: 36, padding: "0 10px", borderRadius: 10, border: "1px solid #ddd", background: "transparent", cursor: "pointer", opacity: 0.8 }}>
                       Ocultar
                     </button>
                   </form>
