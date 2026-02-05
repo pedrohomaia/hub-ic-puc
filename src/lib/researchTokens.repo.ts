@@ -1,3 +1,4 @@
+// src/lib/researchTokens.repo.ts
 import { prisma } from "@/lib/db";
 import { generateTokenPair, hashToken, normalizeToken } from "@/lib/researchTokens";
 import { BadgeCode, Prisma } from "@prisma/client";
@@ -82,15 +83,12 @@ export async function verifyTokenAndCreateVerifiedCompletion(
   const now = new Date();
 
   return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    // ✅ findUnique por tokenHash (é @unique no schema)
     const row = await tx.researchVerifyToken.findUnique({
       where: { tokenHash },
       select: { id: true, researchId: true, usedAt: true, expiresAt: true },
     });
 
     if (!row) throw new AppError("TOKEN_INVALID", 400);
-
-    // Segurança: token pode existir mas ser de outra research
     if (row.researchId !== researchId) throw new AppError("TOKEN_INVALID", 400);
 
     if (row.expiresAt && row.expiresAt.getTime() < now.getTime()) {
@@ -104,6 +102,7 @@ export async function verifyTokenAndCreateVerifiedCompletion(
     if (consumed.count !== 1) throw new AppError("TOKEN_USED", 409);
 
     try {
+      // ✅ cria completion VERIFIED (ledger)
       const completion = await tx.completion.create({
         data: {
           userId,
@@ -114,18 +113,14 @@ export async function verifyTokenAndCreateVerifiedCompletion(
         select: { id: true, type: true, pointsAwarded: true, createdAt: true },
       });
 
-      await tx.user.update({
-        where: { id: userId },
-        data: { points: { increment: VERIFIED_POINTS } },
-      });
-
-      // ✅ Badge automático (tipado)
+      // ✅ Badge automático
       await tx.userBadge.upsert({
         where: { userId_code: { userId, code: BadgeCode.VERIFIED_1 } },
         update: {},
         create: { userId, code: BadgeCode.VERIFIED_1 },
       });
 
+      // ❌ NÃO atualiza User.points aqui (pontos vêm do ledger)
       return completion;
     } catch (e: unknown) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {

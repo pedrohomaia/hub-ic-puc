@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Props = { researchId: string };
 
@@ -8,7 +9,37 @@ function asObj(v: unknown): Record<string, unknown> {
   return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
 }
 
+// ✅ US6.4: códigos -> mensagens humanas
+function humanizeError(code: string) {
+  switch (code) {
+    case "TOKEN_REQUIRED":
+      return "Digite um token para verificar.";
+    case "TOKEN_INVALID":
+      return "Token inválido. Confira se você copiou corretamente.";
+    case "TOKEN_USED":
+      return "Esse token já foi usado.";
+    case "TOKEN_EXPIRED":
+      return "Esse token expirou. Peça um novo para o ADMIN.";
+    case "ALREADY_COMPLETED":
+      return "Você já concluiu essa pesquisa.";
+    case "RESEARCH_NOT_FOUND":
+      return "Pesquisa não encontrada.";
+    case "UNAUTHENTICATED":
+      return "Você precisa estar logado para verificar.";
+    case "FORBIDDEN":
+      return "Você não tem permissão para isso.";
+    case "REQUEST_FAILED":
+      return "Falha na requisição. Tente novamente.";
+    case "NETWORK_ERROR":
+      return "Sem conexão. Verifique sua internet e tente de novo.";
+    default:
+      return `Erro: ${code}`;
+  }
+}
+
 export default function VerifyForm({ researchId }: Props) {
+  const router = useRouter();
+
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -36,8 +67,11 @@ export default function VerifyForm({ researchId }: Props) {
         return;
       }
 
-      setMsg("Verificação OK!");
+      setMsg("Verificação OK! ✅");
       setToken("");
+
+      // ✅ US6.1: atualiza stats sem F5
+      router.refresh();
     } catch {
       setErr("NETWORK_ERROR");
     } finally {
@@ -80,7 +114,8 @@ export default function VerifyForm({ researchId }: Props) {
 
       {err ? (
         <div style={{ padding: 10, border: "1px solid #f1c2c2", borderRadius: 10 }}>
-          <strong>Erro:</strong> <span>{err}</span>
+          <strong>Erro:</strong> <span>{humanizeError(err)}</span>
+          <div style={{ fontSize: 12, opacity: 0.6, marginTop: 6 }}>({err})</div>
         </div>
       ) : null}
 

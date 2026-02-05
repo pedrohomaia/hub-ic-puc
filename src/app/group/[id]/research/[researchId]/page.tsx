@@ -9,7 +9,8 @@ import { getSessionUser } from "@/lib/auth";
 import { getUserGroupRole } from "@/lib/rbac";
 import { getGroupById, getResearchById } from "@/lib/research.repo";
 import StatsBox from "./stats-box";
-import VerifyForm from "./verify-form";
+import VerifyForm from "@/app/components/VerifyForm";
+
 
 type Props = { params: Promise<{ id: string; researchId: string }> };
 

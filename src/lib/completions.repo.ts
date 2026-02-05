@@ -25,21 +25,15 @@ export async function createCompletionSimple(userId: string, researchId: string)
   if (!research.isApproved || research.isHidden) throw new AppError("RESEARCH_NOT_VISIBLE", 403);
 
   try {
-    // ✅ cria SIMPLE + soma pontos atomicamente
-    await prisma.$transaction([
-      prisma.completion.create({
-        data: {
-          userId,
-          researchId,
-          type: "SIMPLE",
-          pointsAwarded: SIMPLE_POINTS,
-        },
-      }),
-      prisma.user.update({
-        where: { id: userId },
-        data: { points: { increment: SIMPLE_POINTS } },
-      }),
-    ]);
+    // ✅ cria SIMPLE (pontos = ledger: Completion.pointsAwarded)
+    await prisma.completion.create({
+      data: {
+        userId,
+        researchId,
+        type: "SIMPLE",
+        pointsAwarded: SIMPLE_POINTS,
+      },
+    });
   } catch (e) {
     // @@unique([userId, researchId, type]) => já existe SIMPLE p/ esse user+research
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {

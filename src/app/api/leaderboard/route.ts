@@ -1,7 +1,9 @@
+// src/app/api/leaderboard/route.ts
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { asErrorCode } from "@/lib/appError";
 
 function startOfCurrentMonthUTC() {
   const now = new Date();
@@ -29,8 +31,12 @@ export async function GET(req: Request) {
       by: ["userId"],
       where: { createdAt: { gte: since } },
       _sum: { pointsAwarded: true },
-      _count: { _all: true },
-      orderBy: { _sum: { pointsAwarded: "desc" } },
+      _count: { id: true }, // ✅ em vez de _all
+      orderBy: [
+        { _sum: { pointsAwarded: "desc" } },
+        { _count: { id: "desc" } }, // ✅ desempata por quantidade
+        { userId: "asc" },          // ✅ desempate estável final
+      ],
       take: 50,
     });
 
@@ -50,18 +56,22 @@ export async function GET(req: Request) {
         userId: g.userId,
         name: u?.name ?? "Sem nome",
         email: u?.email ?? "",
-        points: g._sum.pointsAwarded ?? 0,
-        completions: g._count._all,
+        points: g._sum?.pointsAwarded ?? 0, // ✅ optional chaining
+        completions: g._count?.id ?? 0,     // ✅ count por id
       };
     });
 
-    return NextResponse.json({
-      ok: true,
-      period,
-      since: since.toISOString(),
-      items,
-    });
+    return NextResponse.json(
+      { ok: true, period, since: since.toISOString(), items },
+      { status: 200 }
+    );
   } catch (err) {
+    const { code, status } = asErrorCode(err);
+
+    if (typeof status === "number") {
+      return NextResponse.json({ ok: false, error: code }, { status });
+    }
+
     console.error("[GET /api/leaderboard]", err);
     return NextResponse.json({ ok: false, error: "INTERNAL_ERROR" }, { status: 500 });
   }

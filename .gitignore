@@ -41,3 +41,8 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# local tools / debug endpoints
+scripts/
+src/app/api/debug-db/
+src/app/api/debug-rbac/

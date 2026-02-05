@@ -239,3 +239,67 @@ export async function listResearchByGroup(groupId: string) {
     },
   });
 }
+// ===== MODERATION (US1.6 UI) =====
+
+export type PendingResearchVM = {
+  id: string;
+  title: string;
+  description: string | null;
+  createdAt: Date;
+  groupId: string;
+  isApproved: boolean;
+  isHidden: boolean;
+};
+
+export async function listPendingResearch(limit = 80): Promise<PendingResearchVM[]> {
+  const rows = await prisma.research.findMany({
+    where: { isHidden: false, isApproved: false }, // pendentes
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      createdAt: true,
+      groupId: true,
+      isHidden: true,
+      isApproved: true,
+    },
+  });
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    description: r.description ?? null,
+    createdAt: r.createdAt,
+    groupId: r.groupId,
+    isHidden: r.isHidden,
+    isApproved: r.isApproved,
+  }));
+}
+
+export async function moderateResearch(
+  researchId: string,
+  action: "APPROVE" | "HIDE"
+) {
+  const id = String(researchId ?? "").trim();
+  if (!id) throw new Error("MISSING_ID");
+
+  if (action === "APPROVE") {
+    return prisma.research.update({
+      where: { id },
+      data: { isApproved: true },
+      select: { id: true, isApproved: true, isHidden: true },
+    });
+  }
+
+  if (action === "HIDE") {
+    return prisma.research.update({
+      where: { id },
+      data: { isHidden: true },
+      select: { id: true, isApproved: true, isHidden: true },
+    });
+  }
+
+  throw new Error("INVALID_ACTION");
+}

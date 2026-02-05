@@ -3,17 +3,17 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+import Link from "next/link";
 import { getResearchById } from "@/lib/research.repo";
 import { getSessionUser } from "@/lib/auth";
 import { getUserGroupRole } from "@/lib/rbac";
 import AdminControls from "./AdminControls";
 import CompleteButton from "./CompleteButton";
 
-
 type Props = { params: Promise<{ id: string }> };
 
 export default async function ResearchDetailPage({ params }: Props) {
-  const { id } = await params; // 
+  const { id } = await params;
 
   const research = await getResearchById(id);
 
@@ -29,7 +29,7 @@ export default async function ResearchDetailPage({ params }: Props) {
   let canAdmin = false;
 
   try {
-    const user = await getSessionUser(); // se não tiver sessão, pode lançar (ok)
+    const user = await getSessionUser();
     if (user?.id) {
       const role = await getUserGroupRole(user.id, research.groupId);
       canAdmin = role === "ADMIN";
@@ -46,8 +46,24 @@ export default async function ResearchDetailPage({ params }: Props) {
         {research.description ?? "Sem descrição"}
       </p>
 
-      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 16 }}>
+      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 12 }}>
         ID: {research.id} • Group: {research.groupId}
+      </div>
+
+      {/* ✅ US6.2: caminho claro pro contexto do grupo */}
+      <div style={{ marginBottom: 16 }}>
+        <Link
+          href={`/group/${research.groupId}/research/${research.id}`}
+          style={{
+            display: "inline-block",
+            padding: "8px 12px",
+            border: "1px solid #ddd",
+            borderRadius: 10,
+            textDecoration: "none",
+          }}
+        >
+          Abrir no grupo →
+        </Link>
       </div>
 
       <div

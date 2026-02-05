@@ -1,4 +1,6 @@
 // src/app/api/research/[id]/verify/route.ts
+import { logger } from "@/lib/logger";
+
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
@@ -9,15 +11,12 @@ import { asErrorCode } from "@/lib/appError";
 type VerifyBody = { token?: unknown };
 
 function pickToken(req: Request, body: VerifyBody) {
-  // body.token
   if (typeof body.token === "string") return body.token;
 
-  // query ?token=
   const url = new URL(req.url);
   const q = url.searchParams.get("token");
   if (q) return q;
 
-  // header x-verification-token
   const h = req.headers.get("x-verification-token");
   if (h) return h;
 
@@ -25,6 +24,8 @@ function pickToken(req: Request, body: VerifyBody) {
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const startedAt = Date.now();
+
   try {
     const { id: researchId } = await ctx.params;
     if (!researchId) {
@@ -40,22 +41,44 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const token = typeof tokenRaw === "string" ? tokenRaw.trim() : "";
 
     if (!token) {
+      logger.warn("VERIFY", "token missing", { researchId, userId: user.id });
       return NextResponse.json({ error: "TOKEN_REQUIRED" }, { status: 400 });
     }
 
     const completion = await verifyTokenAndCreateVerifiedCompletion(user.id, researchId, token);
 
+    logger.info("VERIFY", "ok", {
+      researchId,
+      userId: user.id,
+      ms: Date.now() - startedAt,
+    });
+
     return NextResponse.json({ ok: true, completion }, { status: 200 });
   } catch (err) {
     const { code, status } = asErrorCode(err);
-    if (typeof status === "number") {
-      return NextResponse.json({ error: code }, { status });
+
+    // ✅ Normalização: MISSING_TOKEN -> TOKEN_REQUIRED
+    const normalizedCode = code === "MISSING_TOKEN" ? "TOKEN_REQUIRED" : code;
+    const normalizedStatus =
+      normalizedCode === "TOKEN_REQUIRED" ? 400 : status;
+
+    // erros "esperados"
+    if (typeof normalizedStatus === "number") {
+      logger.warn("VERIFY", "expected error", { code: normalizedCode, status: normalizedStatus });
+      return NextResponse.json({ error: normalizedCode }, { status: normalizedStatus });
     }
 
-    if (code === "UNAUTHENTICATED") return NextResponse.json({ error: code }, { status: 401 });
-    if (code === "FORBIDDEN") return NextResponse.json({ error: code }, { status: 403 });
+    if (normalizedCode === "UNAUTHENTICATED") {
+      logger.warn("VERIFY", "unauthenticated", { code: normalizedCode });
+      return NextResponse.json({ error: normalizedCode }, { status: 401 });
+    }
+    if (normalizedCode === "FORBIDDEN") {
+      logger.warn("VERIFY", "forbidden", { code: normalizedCode });
+      return NextResponse.json({ error: normalizedCode }, { status: 403 });
+    }
 
-    console.error("[VERIFY][POST] error:", err);
+    // erro inesperado
+    logger.error("VERIFY", "internal error", { code: normalizedCode });
     return NextResponse.json({ error: "INTERNAL_ERROR" }, { status: 500 });
   }
 }

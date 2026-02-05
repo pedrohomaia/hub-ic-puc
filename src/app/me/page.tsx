@@ -4,6 +4,12 @@ import { prisma } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import type { ReactNode } from "react";
 
+import {
+  getPointsSinceByUser,
+  getPointsTotalByUser,
+  startOfCurrentMonthUTC,
+} from "@/lib/points.repo";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -42,8 +48,13 @@ export default async function MePage() {
 
   const dbUser = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { id: true, email: true, name: true, points: true },
+    select: { id: true, email: true, name: true },
   });
+
+  // ✅ ledger: total e mês atual (igual leaderboard)
+  const total = await getPointsTotalByUser(user.id);
+  const since = startOfCurrentMonthUTC();
+  const month = await getPointsSinceByUser(user.id, since);
 
   const badges = await prisma.userBadge.findMany({
     where: { userId: user.id },
@@ -76,11 +87,21 @@ export default async function MePage() {
           <strong>{dbUser?.name ?? "Sem nome"}</strong>
         </div>
         <div style={{ opacity: 0.8 }}>{dbUser?.email}</div>
-        <div style={{ marginTop: 8 }}>
-          Pontos: <strong>{dbUser?.points ?? 0}</strong>
+
+        <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+          <div>
+            Pontos (Total): <strong>{total.points}</strong> — Completions:{" "}
+            <strong>{total.completions}</strong>
+          </div>
+          <div style={{ opacity: 0.8, fontSize: 13 }}>
+            Pontos (Mês atual): <strong>{month.points}</strong> — Completions:{" "}
+            <strong>{month.completions}</strong>{" "}
+            <span style={{ marginLeft: 8, opacity: 0.7 }}>
+              (desde {since.toISOString().slice(0, 10)})
+            </span>
+          </div>
         </div>
 
-        {/* ✅ US3.4: status “Verificada” */}
         <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
           {isVerified ? <BadgePill>✅ Verificada</BadgePill> : <BadgePill>⏳ Não verificada</BadgePill>}
         </div>
