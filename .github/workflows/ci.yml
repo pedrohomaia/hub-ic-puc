@@ -8,9 +8,25 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: pass
+          POSTGRES_DB: db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U user -d db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       NODE_ENV: "test"
-      DATABASE_URL: "postgresql://user:pass@localhost:5432/db"
+      DATABASE_URL: "postgresql://user:pass@localhost:5432/db?schema=public"
       NEXTAUTH_URL: "http://localhost:3000"
       NEXTAUTH_SECRET: "ci_dummy_secret_ci_dummy_secret_ci_dummy_secret"
       MICROSOFT_CLIENT_ID: "ci"
@@ -44,6 +60,9 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Prisma migrate (CI)
+        run: pnpm prisma migrate deploy
 
       - name: Test
         run: pnpm test
