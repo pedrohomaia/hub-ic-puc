@@ -33,6 +33,8 @@ jobs:
       MICROSOFT_CLIENT_SECRET: "ci"
       MICROSOFT_TENANT_ID: "ci"
       MODERATOR_EMAILS: "ci@example.com"
+      RESEARCH_TOKEN_SECRET: "ci_dummy_research_token_secret_ci_dummy_123456"
+
 
     steps:
       - name: Checkout
