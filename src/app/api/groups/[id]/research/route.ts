@@ -16,7 +16,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     // ✅ API guard
     const role = await getUserGroupRole(user.id, groupId);
-    if (role !== "ADMIN") throw new AppError("FORBIDDEN", 403);
+    if (role !== "ADMIN") throw new AppError("FORBIDDEN_GROUP_ADMIN", 403);
+
 
     const body = await req.json().catch(() => ({}));
     const payload = validateResearchPayload(body);
