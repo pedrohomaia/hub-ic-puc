@@ -4,25 +4,18 @@ export const revalidate = 0;
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { getSessionUser } from "@/lib/auth";
 import { requireModerator } from "@/lib/rbac";
-import { listPendingResearch } from "@/lib/research.repo";
+import { listPendingResearch, moderateResearch } from "@/lib/research.repo";
 
 async function moderate(id: string, action: "APPROVE" | "HIDE") {
   "use server";
+  await moderateResearch(id, action);
 
-  const res = await fetch(`${process.env.NEXTAUTH_URL ?? "http://localhost:3000"}/api/research/${id}/moderate`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action }),
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    const raw = await res.json().catch(() => ({}));
-    const err = typeof raw?.error === "string" ? raw.error : "REQUEST_FAILED";
-    throw new Error(err);
-  }
+  // ✅ atualiza as páginas sem depender de fetch/URL
+  revalidatePath("/moderation");
+  revalidatePath("/research");
 }
 
 export default async function ModerationPage() {

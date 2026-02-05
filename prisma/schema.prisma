@@ -19,9 +19,9 @@ model User {
   accounts                 Account[]
   completions              Completion[]
   memberships              GroupMember[]
+  usedResearchVerifyTokens ResearchVerifyToken[] @relation("ResearchVerifyTokensUsedBy")
   sessions                 Session[]
   badges                   UserBadge[]
-  usedResearchVerifyTokens ResearchVerifyToken[] @relation("ResearchVerifyTokensUsedBy")
 }
 
 model Course {
@@ -100,17 +100,15 @@ model UserBadge {
 }
 
 model ResearchVerifyToken {
-  id         String   @id @default(cuid())
-  researchId String
-  tokenHash  String   @unique
-  createdAt  DateTime @default(now())
-
+  id           String    @id @default(cuid())
+  researchId   String
+  tokenHash    String    @unique
+  createdAt    DateTime  @default(now())
   usedAt       DateTime?
   usedByUserId String?
   expiresAt    DateTime?
-
-  research   Research @relation("ResearchVerifyTokens", fields: [researchId], references: [id], onDelete: Cascade)
-  usedByUser User?    @relation("ResearchVerifyTokensUsedBy", fields: [usedByUserId], references: [id], onDelete: SetNull)
+  research     Research  @relation("ResearchVerifyTokens", fields: [researchId], references: [id], onDelete: Cascade)
+  usedByUser   User?     @relation("ResearchVerifyTokensUsedBy", fields: [usedByUserId], references: [id])
 
   @@index([researchId, createdAt])
   @@index([researchId, usedAt])

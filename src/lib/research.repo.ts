@@ -301,10 +301,11 @@ export async function moderateResearch(
   if (action === "APPROVE") {
   return prisma.research.update({
     where: { id },
-    data: { isApproved: true, isHidden: false }, // ✅ adiciona isso
+    data: { isApproved: true, isHidden: false }, // ✅ importante
     select: { id: true, isApproved: true, isHidden: true },
   });
 }
+
 
 
   if (action === "HIDE") {
