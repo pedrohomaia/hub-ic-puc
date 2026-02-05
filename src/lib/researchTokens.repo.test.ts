@@ -34,18 +34,21 @@ describe("researchTokens.repo", () => {
     });
     userId = user.id;
 
-    const course = await prisma.course.create({
-      data: { name: "Curso Teste" },
-      select: { id: true },
-    });
-
-    const area = await prisma.area.create({
-      data: { name: "Área Teste", courseId: course.id },
-      select: { id: true },
-    });
-
+    // ✅ Cria Course -> Area -> Group em um único fluxo (evita FK flakey no CI)
     const group = await prisma.researchGroup.create({
-      data: { name: "Grupo Teste", areaId: area.id },
+      data: {
+        name: "Grupo Teste",
+        area: {
+          create: {
+            name: "Área Teste",
+            course: {
+              create: {
+                name: "Curso Teste",
+              },
+            },
+          },
+        },
+      },
       select: { id: true },
     });
     groupId = group.id;
