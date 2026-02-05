@@ -162,23 +162,36 @@ export function validateResearchUpdatePayload(
 }
 
 export async function createResearch(
-  _userId: string,
+  userId: string,
   groupId: string,
   payload: ResearchPayload
 ) {
+  const uid = String(userId ?? "").trim();
+  if (!uid) throw new Error("MISSING_USER_ID");
+
   const gid = String(groupId ?? "").trim();
   if (!gid) throw new Error("MISSING_GROUP_ID");
 
-  return prisma.research.create({
-    data: {
-      groupId: gid,
-      title: payload.title,
-      description: payload.description ?? null,
-      isHidden: false,
-      isApproved: false, // ✅ US1.6: nasce PENDING
-    },
+  // ✅ garante que quem cria vira ADMIN do grupo
+  return prisma.$transaction(async (tx) => {
+    await tx.groupMember.upsert({
+      where: { userId_groupId: { userId: uid, groupId: gid } },
+      update: { role: "ADMIN" },
+      create: { userId: uid, groupId: gid, role: "ADMIN" },
+    });
+
+    return tx.research.create({
+      data: {
+        groupId: gid,
+        title: payload.title,
+        description: payload.description ?? null,
+        isHidden: false,
+        isApproved: false, // nasce pendente
+      },
+    });
   });
 }
+
 
 export async function updateResearch(
   _userId: string,
@@ -286,12 +299,13 @@ export async function moderateResearch(
   if (!id) throw new Error("MISSING_ID");
 
   if (action === "APPROVE") {
-    return prisma.research.update({
-      where: { id },
-      data: { isApproved: true },
-      select: { id: true, isApproved: true, isHidden: true },
-    });
-  }
+  return prisma.research.update({
+    where: { id },
+    data: { isApproved: true, isHidden: false }, // ✅ adiciona isso
+    select: { id: true, isApproved: true, isHidden: true },
+  });
+}
+
 
   if (action === "HIDE") {
     return prisma.research.update({
