@@ -48,9 +48,14 @@ export async function GET(req: Request) {
     else if (period === "30d") since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     else since = startOfCurrentMonthUTC();
 
-    // usuário atual (para "minha posição")
-    const me = await getSessionUser();
-    const meId = me?.id ?? null;
+    // usuário atual (para "minha posição") — opcional (testes não têm request scope)
+    let meId: string | null = null;
+    try {
+      const me = await getSessionUser();
+      meId = me?.id ?? null;
+    } catch {
+      meId = null;
+    }
 
     /**
      * CTE: agrega por usuário dentro do período
