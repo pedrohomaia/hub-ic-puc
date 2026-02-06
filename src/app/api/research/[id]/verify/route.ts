@@ -53,16 +53,21 @@ export async function PATCH(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
 ) {
-
   const startedAt = Date.now();
   const requestId = getRequestId(req);
 
   try {
+    // 🔐 auth
     const user = await requireAuth();
+
+    // ⚠️ App Router: params é Promise
     const { id: researchId } = await ctx.params;
 
+    if (!researchId) {
+      return errJson(requestId, "RESEARCH_NOT_FOUND", 404);
+    }
 
-    // ✅ RATE LIMIT PRIMEIRO
+    // 🚦 rate limit ANTES de qualquer validação pesada
     const rl = rateLimit(`verify:${user.id}:${researchId}`, {
       windowMs: 60_000,
       max: 10,
@@ -78,16 +83,20 @@ export async function PATCH(
       return errJson(requestId, "RATE_LIMITED", 429, rlH);
     }
 
-    const rawBody: unknown = await req.json().catch(() => ({} as unknown));
-    const body = (typeof rawBody === "object" && rawBody !== null
-      ? rawBody
-      : {}) as VerifyBody;
+    // 📦 body
+    const rawBody: unknown = await req.json().catch(() => ({}));
+    const body =
+      typeof rawBody === "object" && rawBody !== null
+        ? (rawBody as VerifyBody)
+        : ({} as VerifyBody);
 
     const token = typeof body.token === "string" ? body.token.trim() : "";
+
     if (!token) {
       return errJson(requestId, "TOKEN_REQUIRED", 400, rlH);
     }
 
+    // ✅ verificação real
     const completion = await verifyTokenAndCreateVerifiedCompletion(
       user.id,
       researchId,
@@ -113,8 +122,8 @@ export async function PATCH(
     );
   } catch (e) {
     const { code, status } = asErrorCode(e);
-
     const safeStatus = typeof status === "number" ? status : 500;
+
     logger.warn("VERIFY", "expected error", {
       requestId,
       code,
