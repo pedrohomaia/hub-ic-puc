@@ -5,6 +5,7 @@ export const revalidate = 0;
 
 import Link from "next/link";
 import CopyLink from "./copy-link";
+import PapersSection from "./papers-section";
 
 type Item = {
   rank: number;
@@ -12,7 +13,6 @@ type Item = {
   points: number;
   completions: number;
   name: string;
-  top10?: boolean;
 };
 
 type ApiOk = {
@@ -42,16 +42,20 @@ async function fetchPublicLeaderboard(period: string): Promise<ApiOk> {
   qs.set("pageSize", "20");
 
   const base = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
-  const res = await fetch(`${base}/api/public/leaderboard?${qs.toString()}`, { cache: "no-store" });
+  const res = await fetch(`${base}/api/public/leaderboard?${qs.toString()}`, {
+    cache: "no-store",
+  });
 
   const parsed: unknown = await res.json().catch(() => null);
 
   if (!res.ok || !isApiOk(parsed)) {
-    const errObj = (parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null) as
-      | (ApiErr & Record<string, unknown>)
-      | null;
+    const errObj =
+      parsed && typeof parsed === "object"
+        ? (parsed as Record<string, unknown>)
+        : null;
 
-    const err = typeof errObj?.error === "string" ? errObj.error : "REQUEST_FAILED";
+    const err =
+      typeof errObj?.error === "string" ? errObj.error : "REQUEST_FAILED";
     throw new Error(err);
   }
 
@@ -95,32 +99,48 @@ export default async function PublicLeaderboardPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const sp = await searchParams;
-  const period = (sp.period ?? "week").toLowerCase();
-  const periodSafe: "week" | "month" | "30d" =
-    period === "week" || period === "month" || period === "30d" ? period : "week";
 
-  const data = await fetchPublicLeaderboard(periodSafe);
+  const periodRaw = (sp.period ?? "week").toLowerCase();
+  const period: "week" | "month" | "30d" =
+    periodRaw === "week" || periodRaw === "month" || periodRaw === "30d"
+      ? periodRaw
+      : "week";
 
-  const linkPath = `/public/leaderboard?period=${periodSafe}`;
+  const papersRaw = (sp.papers ?? "cited").toLowerCase();
+  const papersSort = papersRaw === "recent" ? "recent" : "cited";
+
+  const data = await fetchPublicLeaderboard(period);
+
   const linkBase = "/public/leaderboard";
+  const linkPath = `${linkBase}?period=${period}&papers=${papersSort}`;
 
   const top3 = data.items.slice(0, 3);
   const rest = data.items.slice(3);
-
-  // sempre renderizar 3 slots (C)
-  const topSlots: Array<Item | null> = [top3[0] ?? null, top3[1] ?? null, top3[2] ?? null];
+  const topSlots: Array<Item | null> = [
+    top3[0] ?? null,
+    top3[1] ?? null,
+    top3[2] ?? null,
+  ];
 
   const sinceText = new Date(data.since).toLocaleString();
 
   return (
     <div className="mx-auto max-w-[980px]">
+      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Leaderboard público</h1>
 
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-foreground/70">
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-              Período: <b className="text-foreground">{data.period}</b>
+              Período:{" "}
+              <b className="text-foreground">
+                {period === "week"
+                  ? "Semana"
+                  : period === "month"
+                  ? "Mês"
+                  : "30 dias"}
+              </b>
             </span>
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
               Desde: <span className="text-foreground/90">{sinceText}</span>
@@ -130,24 +150,25 @@ export default async function PublicLeaderboardPage({
         </div>
 
         <div className="text-sm text-foreground/60">
-          Público, sem login. <span className="text-foreground/80">Rate limit</span> ativo por IP.
+          Acesso público.{" "}
+          <span className="text-foreground/80">Protegido contra abuso</span>.
         </div>
       </div>
 
-      {/* Filtros (G) */}
+      {/* Filtros */}
       <div className="mt-5 flex flex-wrap gap-2">
-        <PillLink href={`${linkBase}?period=week`} active={periodSafe === "week"}>
-          Semana (ISO)
+        <PillLink href={`${linkBase}?period=week&papers=${papersSort}`} active={period === "week"}>
+          Semana
         </PillLink>
-        <PillLink href={`${linkBase}?period=month`} active={periodSafe === "month"}>
+        <PillLink href={`${linkBase}?period=month&papers=${papersSort}`} active={period === "month"}>
           Mês
         </PillLink>
-        <PillLink href={`${linkBase}?period=30d`} active={periodSafe === "30d"}>
+        <PillLink href={`${linkBase}?period=30d&papers=${papersSort}`} active={period === "30d"}>
           30 dias
         </PillLink>
       </div>
 
-      {/* Top 3 (C) */}
+      {/* Top 3 */}
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         {topSlots.map((u, idx) => {
           const rank = idx + 1;
@@ -160,10 +181,12 @@ export default async function PublicLeaderboardPage({
                   <div className="text-lg">{medal(rank)}</div>
                 </div>
 
-                <div className="mt-2 text-lg font-semibold text-foreground/80">Vaga aberta</div>
+                <div className="mt-2 text-lg font-semibold text-foreground/80">
+                  Próxima posição
+                </div>
 
                 <div className="mt-2 text-sm text-foreground/70">
-                  Seja o próximo a aparecer aqui.
+                  Participe de pesquisas e enquetes para aparecer aqui.
                 </div>
 
                 <div className="mt-4">
@@ -188,42 +211,15 @@ export default async function PublicLeaderboardPage({
               <div className="mt-2 text-lg font-semibold">{u.name}</div>
 
               <div className="mt-2 text-sm text-foreground/80">
-                <b>{u.points}</b> pts • {u.completions} completions
-              </div>
-
-              <div className="mt-3 text-xs text-foreground/60">
-                Top 10: {u.rank <= 10 ? "✅" : "—"}
+                <b>{u.points}</b> pontos • {u.completions} participações
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Tabela ou Empty State (A) */}
-      {rest.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
-          <div className="text-sm text-foreground/70">Sem dados suficientes</div>
-          <div className="mt-1 text-lg font-semibold">Ainda não há pontuações para listar</div>
-          <div className="mt-2 text-sm text-foreground/70">
-            Quando mais pessoas participarem, o ranking completo aparece aqui.
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              href="/research"
-              className="rounded-full bg-white/10 px-3 py-2 text-sm hover:bg-white/15 transition"
-            >
-              Participar (entrar)
-            </Link>
-            <Link
-              href={`${linkBase}?period=30d`}
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 transition"
-            >
-              Ver 30 dias
-            </Link>
-          </div>
-        </div>
-      ) : (
+      {/* Tabela */}
+      {rest.length > 0 && (
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5">
           <div className="overflow-x-auto">
             <table className="min-w-[720px] w-full border-collapse">
@@ -232,18 +228,19 @@ export default async function PublicLeaderboardPage({
                   <th className="p-3 w-[60px]">#</th>
                   <th className="p-3">Nome</th>
                   <th className="p-3 w-[120px]">Pontos</th>
-                  <th className="p-3 w-[140px]">Completions</th>
-                  <th className="p-3 w-[110px]">Top 10</th>
+                  <th className="p-3 w-[160px]">Participações</th>
                 </tr>
               </thead>
               <tbody>
                 {rest.map((it) => (
-                  <tr key={it.userId} className="border-t border-white/10 hover:bg-white/5 transition">
+                  <tr
+                    key={it.userId}
+                    className="border-t border-white/10 hover:bg-white/5 transition"
+                  >
                     <td className="p-3">{it.rank}</td>
                     <td className="p-3">{it.name}</td>
                     <td className="p-3">{it.points}</td>
                     <td className="p-3">{it.completions}</td>
-                    <td className="p-3">{it.rank <= 10 ? "🏅" : ""}</td>
                   </tr>
                 ))}
               </tbody>
@@ -252,21 +249,30 @@ export default async function PublicLeaderboardPage({
         </div>
       )}
 
-      {/* Como funciona (I) */}
+      {/* Vitrine científica */}
+      <PapersSection
+        sort={papersSort}
+        baseHref={linkBase}
+        period={period}
+      />
+
+      {/* Como funciona */}
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="text-sm text-foreground/70">O que é isso?</div>
-          <div className="mt-1 font-semibold">Ranking público do Hub</div>
+          <div className="text-sm text-foreground/70">O que é?</div>
+          <div className="mt-1 font-semibold">Engajamento em pesquisas</div>
           <div className="mt-2 text-sm text-foreground/70">
-            Mostra pontos e completions por período, sem exigir login.
+            Ranking público que destaca participação em pesquisas e enquetes
+            acadêmicas.
           </div>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="text-sm text-foreground/70">Como entrar?</div>
-          <div className="mt-1 font-semibold">Participe de uma pesquisa</div>
+          <div className="text-sm text-foreground/70">Como participar?</div>
+          <div className="mt-1 font-semibold">Responder e estudar</div>
           <div className="mt-2 text-sm text-foreground/70">
-            Faça login e complete pesquisas para aparecer no ranking.
+            Faça login, participe das pesquisas e aprofunde seu estudo com apoio
+            do planner e das leituras recomendadas.
           </div>
           <div className="mt-3">
             <Link
@@ -280,15 +286,16 @@ export default async function PublicLeaderboardPage({
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="text-sm text-foreground/70">Sobre o acesso</div>
-          <div className="mt-1 font-semibold">Seguro e controlado</div>
+          <div className="mt-1 font-semibold">Aberto e estável</div>
           <div className="mt-2 text-sm text-foreground/70">
-            Endpoint público com rate limit por IP para evitar abuso.
+            Esta página é pública para facilitar divulgação, com limites de uso
+            para manter estabilidade.
           </div>
         </div>
       </div>
 
       <p className="mt-4 text-xs text-foreground/60">
-        Dica: compartilhe o link do período com o botão “Copiar link”.
+        Dica: compartilhe o link do período usando “Copiar link”.
       </p>
     </div>
   );
