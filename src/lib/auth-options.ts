@@ -74,12 +74,12 @@ export const authOptions: NextAuthOptions = {
           where: { email },
           update: {
             name: user.name ?? undefined,
-            image: (user as any).image ?? undefined,
+            image: user.image ?? undefined, // ✅ sem any
           },
           create: {
             email,
             name: user.name ?? null,
-            image: (user as any).image ?? null,
+            image: user.image ?? null, // ✅ sem any
           },
           select: { id: true },
         });
