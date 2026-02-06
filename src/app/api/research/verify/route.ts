@@ -38,7 +38,12 @@ function messageFor(code: string) {
   }
 }
 
-function errJson(requestId: string, code: string, status: number, headers?: Record<string, string>) {
+function errJson(
+  requestId: string,
+  code: string,
+  status: number,
+  headers?: Record<string, string>
+) {
   return NextResponse.json(
     { ok: false, error: code, message: messageFor(code), requestId },
     { status, headers }
@@ -55,27 +60,52 @@ export async function PATCH(req: Request) {
     const rawBody: unknown = await req.json().catch(() => ({} as unknown));
     const body = (typeof rawBody === "object" && rawBody !== null ? rawBody : {}) as VerifyBody;
 
-    const researchId = typeof body.researchId === "string" ? body.researchId.trim() : "";
-    if (!researchId) return errJson(requestId, "MISSING_RESEARCH_ID", 400);
+    const researchId =
+      typeof body.researchId === "string" ? body.researchId.trim() : "";
 
-    // rate limit: 10 req / 60s por usuário+pesquisa
-    const rl = rateLimit(`verify:${user.id}:${researchId}`, { windowMs: 60_000, max: 10 });
+    // ✅ RATE LIMIT PRIMEIRO (antes de qualquer lookup)
+    const rl = rateLimit(`verify:${user.id}:${researchId || "unknown"}`, {
+      windowMs: 60_000,
+      max: 10,
+    });
     const rlH = rateHeaders(rl);
 
     if (!rl.ok) {
-      logger.warn("VERIFY", "rate limited", { requestId, researchId, userId: user.id });
+      logger.warn("VERIFY", "rate limited", {
+        requestId,
+        researchId,
+        userId: user.id,
+      });
       return errJson(requestId, "RATE_LIMITED", 429, rlH);
+    }
+
+    // ❌ validações só depois do rate limit
+    if (!researchId) {
+      return errJson(requestId, "MISSING_RESEARCH_ID", 400, rlH);
     }
 
     const token = typeof body.token === "string" ? body.token.trim() : "";
     if (!token) {
-      logger.warn("VERIFY", "token missing", { requestId, researchId, userId: user.id });
+      logger.warn("VERIFY", "token missing", {
+        requestId,
+        researchId,
+        userId: user.id,
+      });
       return errJson(requestId, "TOKEN_REQUIRED", 400, rlH);
     }
 
-    const completion = await verifyTokenAndCreateVerifiedCompletion(user.id, researchId, token);
+    const completion = await verifyTokenAndCreateVerifiedCompletion(
+      user.id,
+      researchId,
+      token
+    );
 
-    logger.info("VERIFY", "ok", { requestId, researchId, userId: user.id, ms: Date.now() - startedAt });
+    logger.info("VERIFY", "ok", {
+      requestId,
+      researchId,
+      userId: user.id,
+      ms: Date.now() - startedAt,
+    });
 
     return NextResponse.json(
       {
@@ -87,14 +117,19 @@ export async function PATCH(req: Request) {
       },
       { status: 200, headers: rlH }
     );
-    } catch (e) {
+  } catch (e) {
     const { code, status } = asErrorCode(e);
     const normalizedCode = code === "MISSING_TOKEN" ? "TOKEN_REQUIRED" : code;
 
     const maybeStatus = normalizedCode === "TOKEN_REQUIRED" ? 400 : status;
     const safeStatus = typeof maybeStatus === "number" ? maybeStatus : 500;
 
-    logger.warn("VERIFY", "expected error", { requestId, code: normalizedCode, status: safeStatus });
+    logger.warn("VERIFY", "expected error", {
+      requestId,
+      code: normalizedCode,
+      status: safeStatus,
+    });
+
     return errJson(requestId, normalizedCode, safeStatus);
   }
 }
