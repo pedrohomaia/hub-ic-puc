@@ -1,3 +1,4 @@
+// src/app/group/[id]/page.tsx
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,6 +9,21 @@ import { getUserGroupRole } from "@/lib/rbac";
 import { getGroupById, listResearchByGroup } from "@/lib/research.repo";
 
 type Props = { params: Promise<{ id: string }> };
+
+type GroupStatsData = {
+  ok: true;
+  totalResearch: number;
+  completions: {
+    total: number;
+    simple: number;
+    verified: number;
+  };
+  topUsers: {
+    userId: string;
+    points: number;
+    name: string | null;
+  }[];
+};
 
 export default async function GroupPage({ params }: Props) {
   const { id: groupId } = await params;
@@ -69,17 +85,8 @@ export default async function GroupPage({ params }: Props) {
         ) : null}
       </div>
 
-      <div
-        style={{
-          marginTop: 16,
-          border: "1px solid #eee",
-          borderRadius: 12,
-          padding: 12,
-          opacity: 0.85,
-        }}
-      >
-        Views: — • Completions: — <span style={{ opacity: 0.7 }}>(Em breve)</span>
-      </div>
+      {/* ✅ Mini dashboard (S11.4) */}
+      {isMember ? <GroupStats groupId={groupId} /> : null}
 
       <h2 style={{ marginTop: 18, marginBottom: 10 }}>Pesquisas do grupo</h2>
 
@@ -116,7 +123,6 @@ export default async function GroupPage({ params }: Props) {
                 </div>
 
                 <Link
-                  // ✅ link no contexto do grupo (Sprint 5.6)
                   href={`/group/${groupId}/research/${r.id}`}
                   style={{
                     padding: 8,
@@ -133,5 +139,47 @@ export default async function GroupPage({ params }: Props) {
         </ul>
       ) : null}
     </main>
+  );
+}
+
+async function GroupStats({ groupId }: { groupId: string }) {
+  const base = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  const res = await fetch(`${base}/api/groups/${groupId}/stats`, {
+    cache: "no-store",
+  });
+
+  if (!res.ok) return null;
+
+  const data = (await res.json()) as GroupStatsData;
+  if (!data.ok) return null;
+
+  return (
+    <div
+      style={{
+        marginTop: 16,
+        border: "1px solid #eee",
+        borderRadius: 12,
+        padding: 12,
+      }}
+    >
+      <div style={{ fontSize: 13, opacity: 0.8 }}>
+        Pesquisas: <b>{data.totalResearch}</b> • Completions:{" "}
+        <b>{data.completions.total}</b> (SIMPLE {data.completions.simple} /
+        VERIFIED {data.completions.verified})
+      </div>
+
+      {data.topUsers.length > 0 ? (
+        <div style={{ marginTop: 10 }}>
+          <strong>Top do grupo</strong>
+          <ul style={{ paddingLeft: 18, marginTop: 6 }}>
+            {data.topUsers.map((u, i) => (
+              <li key={u.userId}>
+                #{i + 1} {u.name ?? "Usuário"} — {u.points} pts
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
