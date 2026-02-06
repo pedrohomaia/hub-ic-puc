@@ -11,6 +11,15 @@ function startOfCurrentMonthUTC() {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0));
 }
 
+// ✅ ISO week começa na segunda 00:00 UTC
+function startOfISOWeekUTC(d: Date) {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0));
+  const day = date.getUTCDay(); // 0..6 (Sun..Sat)
+  const isoDay = day === 0 ? 7 : day; // Sun -> 7
+  date.setUTCDate(date.getUTCDate() - (isoDay - 1)); // volta pra segunda
+  return date;
+}
+
 type Period = "month" | "week" | "30d";
 
 function parsePeriod(raw: string | null): Period | null {
@@ -44,7 +53,7 @@ export async function GET(req: Request) {
 
     // since
     let since: Date;
-    if (period === "week") since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    if (period === "week") since = startOfISOWeekUTC(new Date()); // ✅ mudou aqui
     else if (period === "30d") since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     else since = startOfCurrentMonthUTC();
 

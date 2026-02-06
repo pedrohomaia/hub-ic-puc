@@ -21,9 +21,14 @@ export function rateLimit(key: string, opts: { windowMs: number; max: number }) 
 }
 
 export function rateHeaders(info: { remaining: number; resetAt: number; limit: number }) {
+  const resetSeconds = Math.ceil(info.resetAt / 1000);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const retryAfter = Math.max(0, resetSeconds - nowSeconds);
+
   return {
     "X-RateLimit-Limit": String(info.limit),
     "X-RateLimit-Remaining": String(info.remaining),
-    "X-RateLimit-Reset": String(Math.ceil(info.resetAt / 1000)),
+    "X-RateLimit-Reset": String(resetSeconds),
+    "Retry-After": String(retryAfter),
   } satisfies Record<string, string>;
 }
