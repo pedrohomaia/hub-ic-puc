@@ -1,74 +1,40 @@
-// src/app/api/research/[id]/tokens/route.ts
 export const runtime = "nodejs";
+
 import { asErrorCode } from "@/lib/appError";
-
-import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { generateVerifyTokensForResearch } from "@/lib/researchTokens.repo";
+import { createCompletionSimple } from "@/lib/completions.repo";
+import { getRequestId, jsonErr, jsonOk } from "@/lib/api";
+import { rateLimit, rateHeaders } from "@/lib/rateLimit";
+import { logger } from "@/lib/logger";
 
-type TokensBody = {
-  count?: unknown;
-  expiresInDays?: unknown;
-};
+export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const requestId = getRequestId(_req);
 
-export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
+    const user = await requireAuth();
     const { id: researchId } = await ctx.params;
 
-    if (!researchId) {
-      return NextResponse.json({ error: "MISSING_RESEARCH_ID" }, { status: 400 });
+    const rl = rateLimit(`complete:${user.id}:${researchId}`, { windowMs: 60_000, max: 6 });
+    if (!rl.ok) {
+      logger.warn("COMPLETE", "rate limited", { requestId, researchId, userId: user.id });
+      return jsonErr(requestId, "RATE_LIMITED", 429, {
+        message: "Muitas tentativas. Aguarde um pouco e tente novamente.",
+        headers: rateHeaders(rl),
+      });
     }
 
-    const user = await requireAuth();
+    const result = await createCompletionSimple(user.id, researchId);
 
-    const body: unknown = await req.json().catch(() => ({} as unknown));
-    const obj = (typeof body === "object" && body !== null ? body : {}) as TokensBody;
-
-    const count = Number(obj.count ?? 0);
-
-    const expiresInDaysRaw = obj.expiresInDays;
-    const expiresInDays =
-      expiresInDaysRaw == null ? undefined : Number(expiresInDaysRaw);
-
-    if (!Number.isFinite(count) || count < 1 || count > 500) {
-      return NextResponse.json(
-        { error: "INVALID_COUNT", hint: "count must be between 1 and 500" },
-        { status: 400 }
-      );
-    }
-
-    if (
-      expiresInDays !== undefined &&
-      (!Number.isFinite(expiresInDays) || expiresInDays < 1 || expiresInDays > 365)
-    ) {
-      return NextResponse.json(
-        { error: "INVALID_EXPIRES_IN_DAYS", hint: "expiresInDays must be 1..365" },
-        { status: 400 }
-      );
-    }
-
-    const result = await generateVerifyTokensForResearch(user.id, researchId, count, {
-      expiresInDays,
-    });
-
-    return NextResponse.json(
-      {
-        ok: true,
-        researchId: result.researchId,
-        count: result.count,
-        expiresAt: result.expiresAt ?? null,
-        tokens: result.tokens, // ⚠️ retorna tokens puros UMA vez
-      },
-      { status: 200 }
-    );
+    return jsonOk({ ...result, requestId }, { status: 200, headers: rateHeaders(rl) });
   } catch (err) {
-  const { code, status } = asErrorCode(err);
+    const { code, status } = asErrorCode(err);
 
-  if (typeof status === "number") {
-    return NextResponse.json({ error: code }, { status });
+    if (typeof status === "number") {
+      logger.warn("COMPLETE", "expected error", { requestId, code, status });
+      return jsonErr(requestId, code, status, { message: code });
+    }
+
+    logger.error("COMPLETE", "internal error", { requestId, err });
+    return jsonErr(requestId, "INTERNAL_ERROR", 500, { message: "Erro interno." });
   }
-
-  console.error("[TOKENS][POST] error:", err);
-  return NextResponse.json({ error: "INTERNAL_ERROR" }, { status: 500 });
-}
 }

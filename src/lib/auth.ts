@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth-options";
+import { logger } from "@/lib/logger";
 
 export type SessionUser = {
   id: string;
@@ -20,7 +21,6 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       ? userWithId.id.trim()
       : "";
 
-  // ✅ sem id real = sem auth (evita RBAC quebrando)
   if (!id) return null;
 
   return {
@@ -34,6 +34,6 @@ export async function requireAuth(): Promise<SessionUser> {
   const user = await getSessionUser();
   if (!user) throw new Error("UNAUTHENTICATED");
 
-  console.log("[AUTH] requireAuth user:", user);
+  logger.info("AUTH", "requireAuth ok", { userId: user.id, email: user.email });
   return user;
 }

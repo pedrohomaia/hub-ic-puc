@@ -3,10 +3,11 @@ import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
-import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { verifyTokenAndCreateVerifiedCompletion } from "@/lib/researchTokens.repo";
 import { asErrorCode } from "@/lib/appError";
+import { getRequestId, jsonErr, jsonOk } from "@/lib/api";
+import { rateLimit, rateHeaders } from "@/lib/rateLimit";
 
 type VerifyBody = { token?: unknown };
 
@@ -24,7 +25,6 @@ function pickToken(req: Request, body: VerifyBody) {
 }
 
 function messageFor(code: string) {
-  // mensagem "humana" no backend (opcional, mas ajuda a não hardcode no front)
   switch (code) {
     case "TOKEN_REQUIRED":
       return "Digite um token para verificar.";
@@ -44,8 +44,6 @@ function messageFor(code: string) {
       return "Você não tem permissão para isso.";
     case "MISSING_RESEARCH_ID":
       return "Pesquisa inválida.";
-    case "INTERNAL_ERROR":
-      return "Erro interno. Tente novamente em instantes.";
     default:
       return "Não foi possível verificar. Tente novamente.";
   }
@@ -53,17 +51,25 @@ function messageFor(code: string) {
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const startedAt = Date.now();
+  const requestId = getRequestId(req);
 
   try {
     const { id: researchId } = await ctx.params;
     if (!researchId) {
-      return NextResponse.json(
-        { error: "MISSING_RESEARCH_ID", message: messageFor("MISSING_RESEARCH_ID") },
-        { status: 400 }
-      );
+      return jsonErr(requestId, "MISSING_RESEARCH_ID", 400, { message: messageFor("MISSING_RESEARCH_ID") });
     }
 
     const user = await requireAuth();
+
+    // rate limit: 10 req / 60s por usuário+pesquisa
+    const rl = rateLimit(`verify:${user.id}:${researchId}`, { windowMs: 60_000, max: 10 });
+    if (!rl.ok) {
+      logger.warn("VERIFY", "rate limited", { requestId, researchId, userId: user.id });
+      return jsonErr(requestId, "RATE_LIMITED", 429, {
+        message: "Muitas tentativas. Aguarde um pouco e tente novamente.",
+        headers: rateHeaders(rl),
+      });
+    }
 
     const rawBody: unknown = await req.json().catch(() => ({} as unknown));
     const body = (typeof rawBody === "object" && rawBody !== null ? rawBody : {}) as VerifyBody;
@@ -72,70 +78,43 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const token = typeof tokenRaw === "string" ? tokenRaw.trim() : "";
 
     if (!token) {
-      logger.warn("VERIFY", "token missing", { researchId, userId: user.id });
-      return NextResponse.json(
-        { error: "TOKEN_REQUIRED", message: messageFor("TOKEN_REQUIRED") },
-        { status: 400 }
-      );
+      logger.warn("VERIFY", "token missing", { requestId, researchId, userId: user.id });
+      return jsonErr(requestId, "TOKEN_REQUIRED", 400, {
+        message: messageFor("TOKEN_REQUIRED"),
+        headers: rateHeaders(rl),
+      });
     }
 
     const completion = await verifyTokenAndCreateVerifiedCompletion(user.id, researchId, token);
 
     logger.info("VERIFY", "ok", {
+      requestId,
       researchId,
       userId: user.id,
       ms: Date.now() - startedAt,
     });
 
-    return NextResponse.json(
+    return jsonOk(
       {
-        ok: true,
         message: "Token verificado com sucesso.",
         pointsAwarded: completion?.pointsAwarded ?? 0,
         completion,
+        requestId,
       },
-      { status: 200 }
+      { status: 200, headers: rateHeaders(rl) }
     );
   } catch (err) {
     const { code, status } = asErrorCode(err);
 
-    // ✅ Normalização: MISSING_TOKEN -> TOKEN_REQUIRED
     const normalizedCode = code === "MISSING_TOKEN" ? "TOKEN_REQUIRED" : code;
-
-    // status coerente para TOKEN_REQUIRED
     const normalizedStatus = normalizedCode === "TOKEN_REQUIRED" ? 400 : status;
 
-    // ⚠️ status vindo do asErrorCode costuma ser number.
     if (typeof normalizedStatus === "number") {
-      logger.warn("VERIFY", "expected error", { code: normalizedCode, status: normalizedStatus });
-      return NextResponse.json(
-        { error: normalizedCode, message: messageFor(normalizedCode) },
-        { status: normalizedStatus }
-      );
+      logger.warn("VERIFY", "expected error", { requestId, code: normalizedCode, status: normalizedStatus });
+      return jsonErr(requestId, normalizedCode, normalizedStatus, { message: messageFor(normalizedCode) });
     }
 
-    // fallback defensivo (caso status venha estranho)
-    if (normalizedCode === "UNAUTHENTICATED") {
-      logger.warn("VERIFY", "unauthenticated", { code: normalizedCode });
-      return NextResponse.json(
-        { error: normalizedCode, message: messageFor(normalizedCode) },
-        { status: 401 }
-      );
-    }
-
-    if (normalizedCode === "FORBIDDEN") {
-      logger.warn("VERIFY", "forbidden", { code: normalizedCode });
-      return NextResponse.json(
-        { error: normalizedCode, message: messageFor(normalizedCode) },
-        { status: 403 }
-      );
-    }
-
-    // erro inesperado
-    logger.error("VERIFY", "internal error", { code: normalizedCode });
-    return NextResponse.json(
-      { error: "INTERNAL_ERROR", message: messageFor("INTERNAL_ERROR") },
-      { status: 500 }
-    );
+    logger.error("VERIFY", "internal error", { requestId, code: normalizedCode, err });
+    return jsonErr(requestId, "INTERNAL_ERROR", 500, { message: "Erro interno. Tente novamente em instantes." });
   }
 }
