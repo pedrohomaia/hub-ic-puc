@@ -26,7 +26,7 @@ type ApiOk = {
 
 function isApiOk(v: unknown): v is ApiOk {
   if (!v || typeof v !== "object") return false;
-  const o = v as any;
+  const o = v as Record<string, unknown>;
   return o.ok === true && Array.isArray(o.papers);
 }
 

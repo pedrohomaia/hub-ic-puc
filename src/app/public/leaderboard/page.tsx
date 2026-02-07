@@ -24,11 +24,6 @@ type ApiOk = {
   items: Item[];
 };
 
-type ApiErr = {
-  ok?: false;
-  error?: string;
-};
-
 function isApiOk(v: unknown): v is ApiOk {
   if (!v || typeof v !== "object") return false;
   const obj = v as Record<string, unknown>;
@@ -157,13 +152,22 @@ export default async function PublicLeaderboardPage({
 
       {/* Filtros */}
       <div className="mt-5 flex flex-wrap gap-2">
-        <PillLink href={`${linkBase}?period=week&papers=${papersSort}`} active={period === "week"}>
+        <PillLink
+          href={`${linkBase}?period=week&papers=${papersSort}`}
+          active={period === "week"}
+        >
           Semana
         </PillLink>
-        <PillLink href={`${linkBase}?period=month&papers=${papersSort}`} active={period === "month"}>
+        <PillLink
+          href={`${linkBase}?period=month&papers=${papersSort}`}
+          active={period === "month"}
+        >
           Mês
         </PillLink>
-        <PillLink href={`${linkBase}?period=30d&papers=${papersSort}`} active={period === "30d"}>
+        <PillLink
+          href={`${linkBase}?period=30d&papers=${papersSort}`}
+          active={period === "30d"}
+        >
           30 dias
         </PillLink>
       </div>
@@ -175,7 +179,10 @@ export default async function PublicLeaderboardPage({
 
           if (!u) {
             return (
-              <div key={`slot-${rank}`} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div
+                key={`slot-${rank}`}
+                className="rounded-2xl border border-white/10 bg-white/5 p-4"
+              >
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-foreground/70">#{rank}</div>
                   <div className="text-lg">{medal(rank)}</div>
@@ -202,7 +209,10 @@ export default async function PublicLeaderboardPage({
           }
 
           return (
-            <div key={u.userId} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div
+              key={u.userId}
+              className="rounded-2xl border border-white/10 bg-white/5 p-4"
+            >
               <div className="flex items-center justify-between">
                 <div className="text-sm text-foreground/70">#{u.rank}</div>
                 <div className="text-lg">{medal(u.rank)}</div>
@@ -250,11 +260,7 @@ export default async function PublicLeaderboardPage({
       )}
 
       {/* Vitrine científica */}
-      <PapersSection
-        sort={papersSort}
-        baseHref={linkBase}
-        period={period}
-      />
+      <PapersSection sort={papersSort} baseHref={linkBase} period={period} />
 
       {/* Como funciona */}
       <div className="mt-6 grid gap-3 sm:grid-cols-3">

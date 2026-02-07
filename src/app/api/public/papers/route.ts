@@ -2,24 +2,45 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { asErrorCode } from "@/lib/appError";
-import { rateLimit, rateHeaders } from "@/lib/rateLimit";
-
-type Paper = {
-  id: string;
-  title: string;
-  url: string;
-  year: number | null;
-  venue: string | null;
-  citedBy: number;
-  authors: string[];
-  openAccess: boolean;
-  doi: string | null;
-};
 
 type SortMode = "cited" | "recent";
 
-function getClientIp(req: Request) {
+type PublicPaper = {
+  title: string;
+  url: string;
+  venue?: string;
+  year?: number;
+  authors?: string[];
+  citedBy?: number;
+};
+
+function asRecord(v: unknown): Record<string, unknown> {
+  return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+}
+
+function asString(v: unknown, fallback = ""): string {
+  return typeof v === "string" ? v : fallback;
+}
+
+function asNumber(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+function asArray(v: unknown): unknown[] {
+  return Array.isArray(v) ? v : [];
+}
+
+function clampInt(v: string | null, def: number, min: number, max: number): number {
+  const n = v ? Number.parseInt(v, 10) : NaN;
+  if (!Number.isFinite(n)) return def;
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalizeSort(v: string | null): SortMode {
+  return v === "recent" ? "recent" : "cited";
+}
+
+function getClientIp(req: Request): string {
   const xff = req.headers.get("x-forwarded-for");
   if (xff) return xff.split(",")[0].trim();
   const xrip = req.headers.get("x-real-ip");
@@ -27,175 +48,121 @@ function getClientIp(req: Request) {
   return "unknown";
 }
 
-function safeText(v: unknown) {
-  return String(v ?? "").replace(/\s+/g, " ").trim();
-}
+/**
+ * OpenAlex work -> PublicPaper
+ * Docs (alto nível):
+ * - results[] com title, id, publication_year, host_venue.display_name, authorships[].author.display_name, cited_by_count
+ * - best_oa_location?.landing_page_url ou primary_location?.landing_page_url
+ */
+function coerceOpenAlexWork(work: unknown): PublicPaper | null {
+  const w = asRecord(work);
 
-function clampInt(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
+  const title = asString(w.title).trim();
+  if (!title) return null;
 
-function isoDateUTC(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
+  const publicationYear = asNumber(w.publication_year);
 
-function sinceDaysUTC(days: number) {
-  const now = new Date();
-  const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-  return { from: isoDateUTC(since), to: isoDateUTC(now), days };
-}
+  const hostVenue = asRecord(w.host_venue);
+  const venue = asString(hostVenue.display_name).trim() || undefined;
 
-function mapPapers(results: any[]): Paper[] {
-  return results.map((w: any) => {
-    const authors = Array.isArray(w?.authorships)
-      ? w.authorships
-          .map((a: any) => safeText(a?.author?.display_name))
-          .filter(Boolean)
-          .slice(0, 4)
-      : [];
+  const citedBy = asNumber(w.cited_by_count);
 
-    const venue = safeText(w?.primary_location?.source?.display_name) || null;
+  // tenta URL aberta primeiro
+  const best = asRecord(w.best_oa_location);
+  const primary = asRecord(w.primary_location);
+  const url =
+    asString(best.landing_page_url).trim() ||
+    asString(primary.landing_page_url).trim() ||
+    asString(w.doi).trim();
 
-    const id = safeText(w?.id);
-    const paperUrl = id || "https://openalex.org";
+  // se vier DOI sem prefixo, transforma
+  const normalizedUrl =
+    url && url.startsWith("10.") ? `https://doi.org/${url}` : url;
 
-    const doiRaw = safeText(w?.doi);
-    const doi = doiRaw ? doiRaw.replace(/^https?:\/\/doi\.org\//, "") : null;
+  // autores
+  const authorships = asArray(w.authorships);
+  const authors = authorships
+    .map((a) => {
+      const ar = asRecord(a);
+      const author = asRecord(ar.author);
+      return asString(author.display_name).trim();
+    })
+    .filter((n) => n.length > 0);
 
-    const openAccess = Boolean(w?.open_access?.is_oa);
-
-    return {
-      id,
-      title: safeText(w?.title) || "Sem título",
-      url: paperUrl,
-      year: typeof w?.publication_year === "number" ? w.publication_year : null,
-      venue,
-      citedBy: typeof w?.cited_by_count === "number" ? w.cited_by_count : 0,
-      authors,
-      openAccess,
-      doi,
-    };
-  });
-}
-
-async function fetchOpenAlexWorks(params: {
-  topic: string;
-  perPage: number;
-  from?: string;
-  to?: string;
-  sort: SortMode;
-  signal?: AbortSignal;
-}) {
-  const oa = new URL("https://api.openalex.org/works");
-  oa.searchParams.set("search", params.topic);
-  oa.searchParams.set("per-page", String(params.perPage));
-  oa.searchParams.set("sort", params.sort === "recent" ? "publication_date:desc" : "cited_by_count:desc");
-  oa.searchParams.set(
-    "select",
-    [
-      "id",
-      "title",
-      "publication_year",
-      "cited_by_count",
-      "primary_location",
-      "open_access",
-      "doi",
-      "authorships",
-      "publication_date",
-    ].join(",")
-  );
-
-  // filtro opcional por janela
-  if (params.from && params.to) {
-    oa.searchParams.set("filter", `from_publication_date:${params.from},to_publication_date:${params.to}`);
-  }
-
-  const res = await fetch(oa.toString(), {
-    headers: { "User-Agent": "hub-ic-puc/1.0 (public leaderboard papers)" },
-    signal: params.signal,
-  });
-
-  const json = await res.json().catch(() => null);
-  return { ok: res.ok, json };
+  return {
+    title,
+    url: normalizedUrl,
+    venue,
+    year: publicationYear,
+    authors: authors.length ? authors : undefined,
+    citedBy,
+  };
 }
 
 export async function GET(req: Request) {
-  try {
-    const url = new URL(req.url);
+  // endpoint público — sem auth
+  // (se quiser rate limit depois, dá pra usar getClientIp aqui)
+  const ip = getClientIp(req);
+  void ip; // evita warning se você ainda não usa
 
-    const topic = safeText(url.searchParams.get("topic") ?? "ui ux hci software engineering");
-    const perPage = clampInt(Number(url.searchParams.get("perPage") ?? 6) || 6, 3, 8);
+  const { searchParams } = new URL(req.url);
 
-    const windowDays = clampInt(Number(url.searchParams.get("window") ?? 90) || 90, 7, 365);
-    const range = sinceDaysUTC(windowDays);
+  // query
+  const q = asString(searchParams.get("q")).trim();
+  // sort: cited | recent
+  const sort = normalizeSort(searchParams.get("sort"));
+  // quantidade
+  const limit = clampInt(searchParams.get("limit"), 12, 1, 24);
 
-    const sortRaw = safeText(url.searchParams.get("sort") ?? "cited").toLowerCase();
-    const sort: SortMode = sortRaw === "recent" ? "recent" : "cited";
+  // Se não vier query, ainda assim retorna algo (papers recentes)
+  const encodedQ = encodeURIComponent(q);
+  const perPage = limit;
 
-    // rate limit
-    const ip = getClientIp(req);
-    const rl = rateLimit(`public-papers:${ip}`, { windowMs: 60_000, max: 30 });
-    const baseHeaders = rateHeaders(rl);
+  const sortParam =
+    sort === "recent" ? "publication_date:desc" : "cited_by_count:desc";
 
-    if (!rl.ok) {
-      return NextResponse.json({ ok: false, error: "RATE_LIMITED" }, { status: 429, headers: baseHeaders });
-    }
+  // OpenAlex works endpoint
+  // - se tiver q: search=...
+  // - se não tiver q: só ordena e retorna
+  const url =
+    q.length > 0
+      ? `https://api.openalex.org/works?search=${encodedQ}&per-page=${perPage}&sort=${encodeURIComponent(
+          sortParam
+        )}`
+      : `https://api.openalex.org/works?per-page=${perPage}&sort=${encodeURIComponent(
+          sortParam
+        )}`;
 
-    // timeout (assinatura sênior)
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 8000);
+  const res = await fetch(url, {
+    // endpoint público e “vitrine”: não cachear no server
+    cache: "no-store",
+    headers: {
+      "Accept": "application/json",
+    },
+  });
 
-    // 1) tenta com filtro de data (janela móvel)
-    const r1 = await fetchOpenAlexWorks({
-      topic,
-      perPage,
-      from: range.from,
-      to: range.to,
-      sort,
-      signal: ac.signal,
-    });
-
-    if (!r1.ok || !r1.json) {
-      clearTimeout(timer);
-      return NextResponse.json({ ok: false, error: "UPSTREAM_FAILED" }, { status: 502, headers: baseHeaders });
-    }
-
-    let results = Array.isArray(r1.json?.results) ? r1.json.results : [];
-
-    // 2) fallback: se veio vazio, tenta sem filtro de data
-    if (results.length === 0) {
-      const r2 = await fetchOpenAlexWorks({ topic, perPage, sort, signal: ac.signal });
-      if (r2.ok && r2.json) {
-        results = Array.isArray(r2.json?.results) ? r2.json.results : [];
-      }
-    }
-
-    clearTimeout(timer);
-
-    const papers = mapPapers(results);
-
-    const headersOut = {
-      ...baseHeaders,
-      // bom para CDN/edge
-      "Cache-Control": "public, s-maxage=600, stale-while-revalidate=3600",
-    };
-
+  if (!res.ok) {
     return NextResponse.json(
-      {
-        ok: true,
-        windowDays,
-        range: { from: range.from, to: range.to },
-        topic,
-        sort,
-        papers,
-      },
-      { status: 200, headers: headersOut }
+      { error: "UPSTREAM_FAILED", status: res.status },
+      { status: 502 }
     );
-  } catch (err) {
-    const { code, status } = asErrorCode(err);
-    if (typeof status === "number") return NextResponse.json({ ok: false, error: code }, { status });
-
-    console.error("[GET /api/public/papers]", err);
-    return NextResponse.json({ ok: false, error: "INTERNAL_ERROR" }, { status: 500 });
   }
+
+  const raw: unknown = await res.json().catch(() => ({}));
+  const obj = asRecord(raw);
+  const results = asArray(obj.results);
+
+  const papers = results
+    .map(coerceOpenAlexWork)
+    .filter((p): p is PublicPaper => Boolean(p && p.url));
+
+  return NextResponse.json(
+    {
+      sort,
+      q,
+      count: papers.length,
+      papers,
+    },
+    { status: 200 }
+  );
 }
